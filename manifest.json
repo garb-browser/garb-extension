@@ -1,8 +1,8 @@
 {
   "name": "Eye Tracking Research",
-  "version": "0.0.1",
-  "manifest_version": 2,
-  "description": "...",
+  "version": "0.0.3",
+  "manifest_version": 3,
+  "description": "Eye tracking research extension",
   "homepage_url": "https://github.com/garb-browser/garb-extension",
   "icons": {
     "16": "icons/icon16.png",
@@ -11,28 +11,41 @@
   },
   "default_locale": "en",
   "background": {
-    "scripts": [
-      "src/bg/background.js"
-    ],
-    "persistent": true
+    "service_worker": "src/bg/background.js"
   },
   "options_page": "src/options_custom/index.html",
-  "browser_action": {
+  "action": {
     "default_icon": "icons/icon19.png",
     "default_title": "browser action demo",
     "default_popup": "src/browser_action/browser_action.html"
   },
   "permissions": [
-    "contentSettings",
     "cookies",
-    "fileBrowserHandler",
     "history",
     "idle",
-    "management",
     "notifications",
     "tabs",
-    "geolocation",
-    "https://*/*"
+    "storage",
+    "scripting",
+    "activeTab"
   ],
-  "content_scripts": [ ]
+  "host_permissions": [
+    "https://*/*",
+    "http://*/*",
+    "http://localhost:*/*",
+    "http://127.0.0.1:*/*"
+  ],
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "js": ["js/jquery/jquery.min.js", "src/inject/inject.js"],
+      "run_at": "document_idle"
+    }
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": ["src/inject/inject.css"],
+      "matches": ["<all_urls>"]
+    }
+  ]
 }

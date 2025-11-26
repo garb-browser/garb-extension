@@ -10,13 +10,49 @@
 const API_URL = "https://garb-api-service.onrender.com";
 const EXTRACT_URL = "https://garb-extraction-service.onrender.com";
 
-let authenticated = false;
+let authenticated = true;
 let authUser = 'testUser';
 let authCode = 0;
 let contentScriptTabId = 0;
 
 chrome.runtime.onMessage.addListener(
     function(request, sender, sendResponse) {
+
+      // NEW: Handle popup actions
+      if (request.action === "getAuthState") {
+        sendResponse({
+          user: authUser,
+          authenticated: authenticated,
+          authCode: authCode
+        });
+        return true;
+      }
+      
+      else if (request.action === "signin") {
+        signin(request.username, request.password).then(() => {
+          sendResponse({ success: true, authCode: authCode });
+        });
+        return true;
+      }
+      
+      else if (request.action === "signup") {
+        signup(request.username, request.password).then(() => {
+          sendResponse({ success: true, authCode: authCode });
+        });
+        return true;
+      }
+      
+      else if (request.action === "signout") {
+        signout();
+        sendResponse({ success: true });
+        return true;
+      }
+      
+      else if (request.action === "sendMode") {
+        sendMode(request.mode);
+        sendResponse({ success: true });
+        return true;
+      }
 
       // Request to scrape the webpage and return the text data
       if (request.contentScriptQuery == "extractURLContent") {
@@ -42,9 +78,9 @@ chrome.runtime.onMessage.addListener(
 
       // Request to save the current pagesession data to the database
       else if (request.contentScriptQuery == "saveToDatabase") {
-        // alert("inside savetodatabase")
+        // alert("inside savetodatabase")  // REMOVE - alert doesn't work in MV3
         var url = `${API_URL}/pageSessions`;
-        alert("saving to DB");
+        console.log("saving to DB");  // Use console.log instead of alert
         //const testData = {
         //    url: 'testURL',
         //    title: 'title',
@@ -83,7 +119,7 @@ chrome.runtime.onMessage.addListener(
         var user = request.data.user;
         var pageUrl = encodeURIComponent(request.data.url);
         var url = `${API_URL}//pageSessions/${user}/${pageUrl}`;
-        alert(url);
+        console.log(url);  // Use console.log instead of alert
 
         fetch(url, {
             method: "GET",
@@ -128,18 +164,32 @@ chrome.runtime.onMessage.addListener(
         let distractionPercent =  (1 - (focusedTimeInSecs / myData.totalTime)).toFixed(4) * 100;
         let myString = `Total time spent: ${myData.totalTime} seconds\n
                         Time spent distracted: ${distractionPercent}%\n`
-        alert(myString);
+        console.log(myString);  // Use console.log instead of alert
+        // Send message to content script to show notification if needed
       }
     }
 );
 
 function sendMode(i) {
-  console.log("trying to send to inject.js");
+  console.log("trying to send to inject.js, mode:", i);
   
-  // chrome.tabs.query({active: true, currentWindow: true}, function(tabs) {
-    chrome.tabs.sendMessage(contentScriptTabId, {switchMode: i});
-    console.log("after chrome.tabs.sendMessage");
-  // });
+  // Send to the stored tab ID if available
+  if (contentScriptTabId) {
+    chrome.tabs.sendMessage(contentScriptTabId, {switchMode: i}).catch(err => {
+      console.log("Error sending to stored tab:", err);
+    });
+  }
+  
+  // Also try sending to the active tab as fallback
+  chrome.tabs.query({active: true, currentWindow: true}, function(tabs) {
+    if (tabs[0] && tabs[0].id !== contentScriptTabId) {
+      chrome.tabs.sendMessage(tabs[0].id, {switchMode: i}).catch(err => {
+        console.log("Error sending to active tab:", err);
+      });
+    }
+  });
+  
+  console.log("after chrome.tabs.sendMessage");
   // chrome.runtime.sendMessage(
   //   {contentScriptQuery: "getMode", data: i},
   //   result => {
