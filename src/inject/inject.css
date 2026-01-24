@@ -1,74 +1,957 @@
-/* this page is currently being injected into *all* web pages */
+/**
+ * GARB Eye Tracking Extension - Reader View Styles
+ * Safari Reader-like design with customizable themes
+ * Optimized for reading research with eye tracking
+ */
 
-/* just to show that the injection is working */
-/*
-p {
-    background-color: blueviolet;
+/* ========================================
+   CSS CUSTOM PROPERTIES (Theme Variables)
+   ======================================== */
+
+.garb-reader {
+    /* Default: Gray theme - cool blue-gray tones */
+    --bg-color: #f0f2f5;
+    --article-bg: #ffffff;
+    --text-color: #1a1a1a;
+    --text-secondary: #666666;
+    --text-muted: #888888;
+    --border-color: #d8dde3;
+    --link-color: #2563eb;
+    --highlight-read: rgba(37, 99, 235, 0.12);
+    --highlight-current: rgba(37, 99, 235, 0.25);
+    --highlight-line-active: rgba(37, 99, 235, 0.04);
+    --highlight-line-complete: rgba(34, 197, 94, 0.04);
+    --toolbar-bg: #ffffff;
+    --toolbar-hover: #f0f0f0;
+    --shadow-color: rgba(0, 0, 0, 0.08);
+    --heading-color: #1e40af;
+    --current-indicator: #2563eb;
+    /* Gaze bubble colors - organic ring effect */
+    --gaze-ring-inner: rgba(37, 99, 235, 0.15);
+    --gaze-ring-color: rgba(37, 99, 235, 0.25);
+    --gaze-ring-outer: rgba(37, 99, 235, 0.12);
 }
-*/
 
-html, body {
-    /* why height auto instead of 100% for html and body:
-    https://stackoverflow.com/questions/15943009/difference-between-css-height-100-vs-height-auto
-    https://stackoverflow.com/questions/31765879/flexbox-parent-container-not-growing-along-with-its-children-content-inside-is
-    https://stackoverflow.com/questions/38170964/height-100-when-parent-height-is-auto
-    100% prevents growing along with children
-    */ 
-    height: auto;       
-    width: auto;
-    display: flex;
-    flex-flow: row;
-    justify-content: center;
-    margin: 0px;
-    background-color: rgba(0, 0, 0, 0.05);
+/* White Theme - pure white with soft green highlights */
+.garb-reader.theme-white {
+    --bg-color: #ffffff;
+    --article-bg: #ffffff;
+    --border-color: #f0f0f0;
+    --shadow-color: rgba(0, 0, 0, 0.03);
+    --link-color: #059669;
+    --highlight-read: rgba(5, 150, 105, 0.1);
+    --highlight-current: rgba(5, 150, 105, 0.22);
+    --highlight-line-active: rgba(5, 150, 105, 0.03);
+    --highlight-line-complete: rgba(5, 150, 105, 0.02);
+    --heading-color: #047857;
+    --current-indicator: #059669;
+    /* Gaze bubble - organic green ring */
+    --gaze-ring-inner: rgba(5, 150, 105, 0.15);
+    --gaze-ring-color: rgba(5, 150, 105, 0.25);
+    --gaze-ring-outer: rgba(5, 150, 105, 0.12);
 }
 
-h1, .title {
-    font-family: Palatino, Georgia, Times, "Times New Roman", serif;
-    font-weight: bold;
-    font-size: 1.33em;
-    line-height: 1.5em;
+/* Gray Theme (default) - distinct gray background */
+.garb-reader.theme-gray {
+    --bg-color: #e8e8e8;
+    --article-bg: #ffffff;
+    --border-color: #d0d0d0;
+}
+
+/* Cream/Sepia Theme - warm brown tones */
+.garb-reader.theme-cream {
+    --bg-color: #f4ecd8;
+    --article-bg: #faf8f1;
+    --text-color: #3d3929;
+    --text-secondary: #5c5647;
+    --text-muted: #7a7567;
+    --border-color: #e6ddc7;
+    --link-color: #7d5a2f;
+    --highlight-read: rgba(139, 90, 43, 0.15);
+    --highlight-current: rgba(139, 90, 43, 0.28);
+    --highlight-line-active: rgba(139, 90, 43, 0.04);
+    --highlight-line-complete: rgba(107, 142, 35, 0.05);
+    --toolbar-bg: #faf8f1;
+    --toolbar-hover: #f0ead6;
+    --heading-color: #92400e;
+    --current-indicator: #b45309;
+    /* Gaze bubble - organic amber ring */
+    --gaze-ring-inner: rgba(180, 83, 9, 0.15);
+    --gaze-ring-color: rgba(180, 83, 9, 0.25);
+    --gaze-ring-outer: rgba(180, 83, 9, 0.12);
+}
+
+/* Dark/Black Theme - subtle, elegant highlights */
+.garb-reader.theme-dark {
+    --bg-color: #1a1a1a;
+    --article-bg: #242424;
+    --text-color: #e5e5e5;
+    --text-secondary: #999999;
+    --text-muted: #777777;
+    --border-color: #333333;
+    --link-color: #7dd3fc;
+    --highlight-read: rgba(125, 211, 252, 0.08);
+    --highlight-current: rgba(125, 211, 252, 0.18);
+    --highlight-line-active: rgba(125, 211, 252, 0.03);
+    --highlight-line-complete: rgba(134, 239, 172, 0.04);
+    --toolbar-bg: #2a2a2a;
+    --toolbar-hover: #3a3a3a;
+    --shadow-color: rgba(0, 0, 0, 0.3);
+    --heading-color: #7dd3fc;
+    --current-indicator: #38bdf8;
+    /* Gaze bubble - organic cyan ring for dark mode */
+    --gaze-ring-inner: rgba(56, 189, 248, 0.18);
+    --gaze-ring-color: rgba(56, 189, 248, 0.28);
+    --gaze-ring-outer: rgba(56, 189, 248, 0.14);
+}
+
+/* ========================================
+   FONT FAMILY OPTIONS
+   ======================================== */
+
+.garb-reader.font-system {
+    --content-font: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+}
+
+.garb-reader.font-serif {
+    --content-font: Georgia, 'Times New Roman', Times, serif;
+}
+
+.garb-reader.font-sans {
+    --content-font: -apple-system, BlinkMacSystemFont, 'Helvetica Neue', Arial, sans-serif;
+}
+
+.garb-reader.font-sf {
+    --content-font: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'SF Pro Display', system-ui, sans-serif;
+}
+
+.garb-reader.font-dyslexic {
+    --content-font: 'OpenDyslexic', 'Comic Sans MS', cursive, sans-serif;
+}
+
+/* ========================================
+   FONT SIZE OPTIONS
+   ======================================== */
+
+.garb-reader.size-small { --content-size: 16px; --title-size: 26px; }
+.garb-reader.size-medium { --content-size: 18px; --title-size: 30px; }
+
+/* ========================================
+   BASE STYLES
+   ======================================== */
+
+.garb-reader {
+    margin: 0;
+    padding: 0;
+    min-height: 100vh;
+    background: var(--bg-color);
+    font-family: var(--content-font, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif);
+    color: var(--text-color);
+    line-height: 1.6;
+    font-size: var(--content-size, 18px);
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    transition: background-color 0.3s ease, color 0.3s ease, font-size 0.2s ease;
+}
+
+/* ========================================
+   READER MODE ANIMATION
+   ======================================== */
+
+@keyframes garb-slide-up {
+    from {
+        opacity: 0;
+        transform: translateY(40px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+@keyframes garb-fade-in {
+    from { opacity: 0; }
+    to { opacity: 1; }
+}
+
+.garb-reader .garb-source-bar {
+    animation: garb-fade-in 0.4s ease-out;
+}
+
+.garb-reader .garb-main {
+    animation: garb-slide-up 0.5s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.garb-reader .garb-article {
+    animation: garb-slide-up 0.5s cubic-bezier(0.16, 1, 0.3, 1) 0.05s both;
+}
+
+.garb-reader .garb-status {
+    animation: garb-fade-in 0.3s ease-out 0.2s both;
+}
+
+/* ========================================
+   SETTINGS PANEL (drops down from status bar)
+   ======================================== */
+
+.garb-settings-toggle {
+    background: rgba(255, 255, 255, 0.2);
+    border: none;
+    color: white;
+    padding: 4px 10px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 13px;
+    font-weight: 600;
+    font-family: Georgia, serif;
+    transition: background 0.2s ease;
+    margin-left: 8px;
+}
+
+.garb-settings-toggle:hover {
+    background: rgba(255, 255, 255, 0.3);
+}
+
+.garb-settings-toggle.active {
+    background: rgba(255, 255, 255, 0.4);
+}
+
+.garb-settings-panel {
+    position: fixed;
+    top: 56px;
+    right: 16px;
+    background: var(--toolbar-bg);
+    border: 1px solid var(--border-color);
+    border-radius: 12px;
+    box-shadow: 0 4px 20px var(--shadow-color);
+    padding: 16px;
+    min-width: 220px;
+    display: none;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    font-size: 14px;
+    z-index: 10002;
+}
+
+.garb-settings-panel.visible {
     display: block;
 }
 
-p {
-    font-size: 16px;
-    line-height: 1.5em;
+.garb-settings-section {
+    margin-bottom: 16px;
 }
 
-img {
-    max-width: fit-content;
+.garb-settings-section:last-child {
+    margin-bottom: 0;
 }
 
-.article {
-    /* position absolute breaks the flexbox centering */
-    display: flex;
-    flex-flow: column nowrap;
-    font-family: Georgia, Times, "Times New Roman", serif;
-    position: relative;
-    height: auto;
-    width: auto;
-    padding-right: 8px;
-    box-shadow: 0px 6px 12px 3px rgba(0, 0, 0, 0.2);    /* from apple style */
-    padding: 20px 30px 20px 30px;
-    background-color: rgba(255, 255, 255);
-}
-
-.content {
-    /*  why not to use display:flex here: https://stackoverflow.com/questions/27418104/difference-between-displayinline-flex-and-displayflex */
-    /* https://www.w3schools.com/css/css_inline-block.asp */
-    margin-top: 20px;
-    display: inline-block;
-    width: auto;
-}
-
-.content .line {
+.garb-settings-label {
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: var(--text-muted);
+    margin-bottom: 8px;
     display: block;
-    font-size: 23px;
-    line-height: 2;
+}
+
+.garb-theme-options,
+.garb-font-options {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+.garb-theme-btn {
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    border: 2px solid var(--border-color);
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.garb-theme-btn:hover {
+    transform: scale(1.1);
+}
+
+.garb-theme-btn.active {
+    border-color: var(--link-color);
+    box-shadow: 0 0 0 2px var(--link-color);
+}
+
+.garb-theme-btn.theme-white-btn { background: #ffffff; border-color: #ccc; }
+.garb-theme-btn.theme-gray-btn { background: #e8e8e8; }
+.garb-theme-btn.theme-cream-btn { background: #f4ecd8; }
+.garb-theme-btn.theme-dark-btn { background: #1a1a1a; border-color: #444; }
+
+.garb-font-btn {
+    padding: 6px 12px;
+    border-radius: 6px;
+    border: 1px solid var(--border-color);
+    background: var(--article-bg);
+    color: var(--text-color);
+    cursor: pointer;
+    font-size: 12px;
+    transition: all 0.2s ease;
+}
+
+.garb-font-btn:hover {
+    background: var(--toolbar-hover);
+}
+
+.garb-font-btn.active {
+    background: var(--link-color);
+    color: white;
+    border-color: var(--link-color);
+}
+
+.garb-size-options {
+    display: flex;
+    gap: 8px;
+    align-items: baseline;
+}
+
+.garb-size-btn {
+    padding: 6px 14px;
+    border-radius: 6px;
+    border: 1px solid var(--border-color);
+    background: var(--article-bg);
+    color: var(--text-color);
+    cursor: pointer;
+    font-family: Georgia, serif;
+    transition: all 0.2s ease;
+}
+
+.garb-size-btn:hover {
+    background: var(--toolbar-hover);
+}
+
+.garb-size-btn.active {
+    background: #22c55e;
+    color: white;
+    border-color: #22c55e;
+}
+
+.garb-size-btn[data-size="small"] {
+    font-size: 13px;
+}
+
+.garb-size-btn[data-size="medium"] {
+    font-size: 18px;
+}
+
+/* ========================================
+   SOURCE BAR
+   ======================================== */
+
+.garb-source-bar {
+    position: sticky;
+    top: 0;
     z-index: 100;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    padding: 8px 24px;
+    background: var(--bg-color);
+    border-bottom: none;
+    font-size: 12px;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    opacity: 0.7;
+    transition: opacity 0.2s ease;
 }
 
-.content .line .quad {
-    z-index: 101;
+.garb-source-bar:hover {
+    opacity: 1;
+}
+
+.garb-source-domain {
+    color: var(--text-muted);
+    font-weight: 400;
+}
+
+.garb-source-link {
+    color: var(--text-muted);
+    text-decoration: none;
+    font-weight: 400;
+    margin-left: 8px;
+}
+
+.garb-source-link:hover {
+    color: var(--link-color);
+    text-decoration: underline;
+}
+
+/* ========================================
+   MAIN LAYOUT - Safari Reader Style
+   ======================================== */
+
+.garb-main {
+    display: flex;
+    justify-content: center;
+    padding: 24px 16px 60px;
+}
+
+.garb-article {
+    max-width: 700px;
+    width: 100%;
+    background: var(--article-bg);
+    padding: 40px 0;
+    transition: background-color 0.3s ease;
+}
+
+/* Remove card styling in white/cream themes for Safari Reader feel */
+.garb-reader.theme-white .garb-article,
+.garb-reader.theme-cream .garb-article {
+    box-shadow: none;
+    border-radius: 0;
+}
+
+.garb-reader.theme-gray .garb-article,
+.garb-reader.theme-dark .garb-article {
+    border-radius: 8px;
+    box-shadow: 0 1px 3px var(--shadow-color);
+    padding: 40px 48px;
+}
+
+/* ========================================
+   HEADER - Safari Reader Style
+   ======================================== */
+
+.garb-header {
+    margin-bottom: 28px;
+    padding-bottom: 0;
+    border-bottom: none;
+}
+
+.garb-title {
+    font-family: Georgia, 'Times New Roman', Times, serif;
+    font-size: var(--title-size, 30px);
+    font-weight: 700;
+    line-height: 1.2;
+    color: var(--text-color);
+    margin: 0 0 12px 0;
+    letter-spacing: -0.3px;
+}
+
+.garb-metadata {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 4px;
+    font-size: 13px;
+    color: var(--text-muted);
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    margin-top: 8px;
+}
+
+.garb-author {
+    color: var(--text-secondary);
+    font-weight: 500;
+}
+
+.garb-date {
+    color: var(--text-muted);
+}
+
+.garb-separator {
+    margin: 0 6px;
+    color: var(--text-muted);
+}
+
+/* ========================================
+   HERO IMAGE
+   ======================================== */
+
+.garb-hero-image {
+    width: 100%;
+    max-height: 400px;
+    object-fit: cover;
+    border-radius: 6px;
+    margin-bottom: 32px;
+}
+
+/* ========================================
+   CONTENT AREA
+   ======================================== */
+
+.garb-content {
+    font-family: var(--content-font, Georgia, 'Times New Roman', Times, serif);
+    font-size: var(--content-size, 18px);
+    line-height: 1.9;
+    color: var(--text-color);
+    transition: font-size 0.2s ease;
+    letter-spacing: 0.01em;
+}
+
+.garb-paragraph {
+    margin-bottom: 1.8em;
+}
+
+/* ========================================
+   HYPERLINKS IN CONTENT
+   ======================================== */
+
+.garb-content a,
+.garb-content .garb-link {
+    color: var(--link-color);
+    text-decoration: underline;
+    text-decoration-color: rgba(0, 102, 204, 0.3);
+    text-underline-offset: 2px;
+    transition: text-decoration-color 0.2s ease;
+}
+
+.garb-content a:hover,
+.garb-content .garb-link:hover {
+    text-decoration-color: var(--link-color);
+}
+
+.garb-reader.theme-cream .garb-content a {
+    text-decoration-color: rgba(125, 90, 47, 0.3);
+}
+
+.garb-reader.theme-dark .garb-content a {
+    text-decoration-color: rgba(96, 165, 250, 0.3);
+}
+
+/* ========================================
+   LINE & WORD TRACKING - Enhanced visibility
+   ======================================== */
+
+.garb-line {
+    display: block;
+    padding: 4px 0;
+    border-radius: 3px;
+    transition: background 0.15s ease;
+}
+
+.garb-line-active {
+    background: var(--highlight-line-active);
+}
+
+.garb-line-complete {
+    background: var(--highlight-line-complete);
+}
+
+.garb-word {
+    display: inline;
+    padding: 2px 4px;
+    margin: 0 -4px;
+    border-radius: 4px;
+    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+    position: relative;
+}
+
+.garb-word-read {
+    background: var(--highlight-read);
+}
+
+/* Floating gaze bubble - Tobii-style organic blob with transparent center */
+.garb-gaze-bubble {
+    background: radial-gradient(
+        ellipse 70% 70% at 50% 50%,
+        transparent 0%,
+        transparent 40%,
+        var(--gaze-ring-inner, rgba(37, 99, 235, 0.15)) 55%,
+        var(--gaze-ring-color, rgba(37, 99, 235, 0.25)) 70%,
+        var(--gaze-ring-outer, rgba(37, 99, 235, 0.12)) 85%,
+        transparent 100%
+    );
+    border: none;
+    border-radius: 50%;
+    filter: blur(2px);
+    pointer-events: none;
+    will-change: left, top, width, height, opacity;
+}
+
+/* Trail bubble - larger, softer halo that follows behind */
+.garb-gaze-bubble.garb-gaze-trail {
+    background: radial-gradient(
+        ellipse 60% 60% at 50% 50%,
+        transparent 0%,
+        transparent 30%,
+        var(--gaze-ring-outer, rgba(37, 99, 235, 0.08)) 50%,
+        var(--gaze-ring-outer, rgba(37, 99, 235, 0.05)) 70%,
+        transparent 100%
+    );
+    border: none;
+    border-radius: 50%;
+    filter: blur(4px);
+    opacity: 0.8;
+}
+
+/* ========================================
+   HEADINGS IN CONTENT - Prominent with deep colors
+   ======================================== */
+
+.garb-heading {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    font-weight: 700;
+    color: var(--heading-color, var(--text-color));
+    margin-top: 48px;
+    margin-bottom: 20px;
+    line-height: 1.25;
+    padding-bottom: 8px;
+    border-bottom: 2px solid var(--heading-color, var(--link-color));
+}
+
+.garb-h2 { font-size: 28px; }
+.garb-h3 { font-size: 24px; border-bottom-width: 1px; }
+.garb-h4 { font-size: 20px; border-bottom: none; }
+.garb-h5 { font-size: 18px; border-bottom: none; }
+.garb-h6 { font-size: 16px; border-bottom: none; color: var(--text-secondary); }
+
+/* ========================================
+   BLOCKQUOTES
+   ======================================== */
+
+.garb-quote {
+    margin: 28px 0;
+    padding: 20px 24px;
+    border-left: 3px solid var(--link-color);
+    background: var(--highlight-line-active);
+    border-radius: 0 6px 6px 0;
+    font-style: italic;
+    color: var(--text-secondary);
+}
+
+/* ========================================
+   LISTS
+   ======================================== */
+
+.garb-list {
+    margin: 24px 0;
+    padding-left: 24px;
+}
+
+.garb-list-item {
+    margin-bottom: 12px;
+    padding-left: 8px;
+}
+
+.garb-list-item::marker {
+    color: var(--link-color);
+}
+
+/* ========================================
+   FIGURES & INLINE IMAGES
+   ======================================== */
+
+.garb-figure {
+    margin: 32px 0;
+    text-align: center;
+}
+
+.garb-inline-image {
+    max-width: 100%;
+    height: auto;
+    border-radius: 6px;
+    box-shadow: 0 2px 8px var(--shadow-color);
+}
+
+.garb-caption {
+    margin-top: 12px;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    font-size: 13px;
+    color: var(--text-muted);
+    font-style: normal;
+}
+
+/* ========================================
+   STATUS INDICATOR
+   ======================================== */
+
+.garb-status {
+    position: fixed;
+    top: 16px;
+    right: 80px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 16px;
+    background: #10b981;
+    color: white;
+    border-radius: 24px;
+    font-size: 13px;
+    font-weight: 500;
+    z-index: 10001;
+    box-shadow: 0 4px 12px rgba(16, 185, 129, 0.3);
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+}
+
+.garb-status.error {
+    background: #ef4444;
+    box-shadow: 0 4px 12px rgba(239, 68, 68, 0.3);
+}
+
+.garb-status-dot {
+    width: 8px;
+    height: 8px;
+    background: white;
+    border-radius: 50%;
+    animation: garb-pulse 1.5s ease-in-out infinite;
+}
+
+.garb-status.error .garb-status-dot {
+    animation: none;
+    opacity: 0.7;
+}
+
+@keyframes garb-pulse {
+    0%, 100% { opacity: 1; transform: scale(1); }
+    50% { opacity: 0.5; transform: scale(0.9); }
+}
+
+.garb-status-text {
+    flex: 1;
+}
+
+.garb-deactivate-btn {
+    background: rgba(255, 255, 255, 0.2);
+    border: none;
+    color: white;
+    width: 22px;
+    height: 22px;
+    border-radius: 50%;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 12px;
+    font-weight: bold;
+    transition: background 0.2s ease, transform 0.2s ease;
+    margin-left: 4px;
+}
+
+.garb-deactivate-btn:hover {
+    background: rgba(255, 255, 255, 0.35);
+    transform: scale(1.1);
+}
+
+/* ========================================
+   RESPONSIVE DESIGN
+   ======================================== */
+
+@media (max-width: 768px) {
+    .garb-main {
+        padding: 16px 12px 60px;
+    }
+
+    .garb-article {
+        padding: 24px 16px;
+    }
+
+    .garb-reader.theme-gray .garb-article,
+    .garb-reader.theme-dark .garb-article {
+        padding: 24px 20px;
+        border-radius: 0;
+    }
+
+    .garb-title {
+        font-size: 24px;
+    }
+
+    .garb-content {
+        font-size: 17px;
+        line-height: 1.75;
+    }
+
+    .garb-source-bar {
+        padding: 10px 16px;
+        font-size: 12px;
+    }
+
+    .garb-settings-toolbar {
+        top: auto;
+        bottom: 20px;
+        right: 16px;
+    }
+
+    .garb-settings-panel {
+        right: auto;
+        left: -160px;
+        bottom: 54px;
+        top: auto;
+    }
+
+    .garb-status {
+        top: auto;
+        bottom: 80px;
+        right: 16px;
+        padding: 8px 14px;
+        font-size: 12px;
+    }
+}
+
+/* ========================================
+   PRINT STYLES
+   ======================================== */
+
+@media print {
+    .garb-reader {
+        background: white !important;
+        color: black !important;
+    }
+
+    .garb-source-bar,
+    .garb-status,
+    .garb-settings-toolbar {
+        display: none !important;
+    }
+
+    .garb-article {
+        box-shadow: none;
+        padding: 0;
+        max-width: none;
+    }
+
+    .garb-word-read,
+    .garb-word-current {
+        background: transparent !important;
+    }
+
+    .garb-line-active,
+    .garb-line-complete {
+        background: transparent !important;
+    }
+}
+
+/* ========================================
+   OPENDYSLEXIC FONT (embedded)
+   ======================================== */
+
+@font-face {
+    font-family: 'OpenDyslexic';
+    src: url('https://cdn.jsdelivr.net/npm/open-dyslexic@1.0.3/woff/OpenDyslexic-Regular.woff') format('woff');
+    font-weight: normal;
+    font-style: normal;
+    font-display: swap;
+}
+
+@font-face {
+    font-family: 'OpenDyslexic';
+    src: url('https://cdn.jsdelivr.net/npm/open-dyslexic@1.0.3/woff/OpenDyslexic-Bold.woff') format('woff');
+    font-weight: bold;
+    font-style: normal;
+    font-display: swap;
+}
+
+/* ========================================
+   READING PROGRESS BAR
+   ======================================== */
+
+.garb-progress-bar {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 4px;
+    background: var(--border-color);
+    z-index: 10003;
+}
+
+.garb-progress-fill {
+    height: 100%;
+    width: 0%;
+    background: linear-gradient(90deg, var(--link-color), var(--heading-color, var(--link-color)));
+    transition: width 0.2s ease-out;
+    border-radius: 0 2px 2px 0;
+}
+
+/* ========================================
+   READING INFO BAR (time & percentage)
+   ======================================== */
+
+.garb-reading-info {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    margin-top: 12px;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    font-size: 13px;
+    color: var(--text-muted);
+}
+
+.garb-reading-time {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.garb-reading-time::before {
+    content: '⏱';
+    font-size: 14px;
+}
+
+.garb-reading-progress {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-weight: 500;
+    color: var(--link-color);
+}
+
+.garb-reading-progress::before {
+    content: '📖';
+    font-size: 14px;
+}
+
+/* ========================================
+   AUTO-SCROLL TOGGLE IN SETTINGS
+   ======================================== */
+
+.garb-autoscroll-toggle {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 8px 0;
+}
+
+.garb-autoscroll-label {
+    font-size: 13px;
+    color: var(--text-color);
+}
+
+.garb-toggle-switch {
+    position: relative;
+    width: 44px;
+    height: 24px;
+}
+
+.garb-toggle-switch input {
+    opacity: 0;
+    width: 0;
+    height: 0;
+}
+
+.garb-toggle-slider {
+    position: absolute;
+    cursor: pointer;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background-color: var(--border-color);
+    transition: 0.3s;
+    border-radius: 24px;
+}
+
+.garb-toggle-slider:before {
+    position: absolute;
+    content: "";
+    height: 18px;
+    width: 18px;
+    left: 3px;
+    bottom: 3px;
+    background-color: white;
+    transition: 0.3s;
+    border-radius: 50%;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+}
+
+.garb-toggle-switch input:checked + .garb-toggle-slider {
+    background-color: #22c55e;
+}
+
+.garb-toggle-switch input:checked + .garb-toggle-slider:before {
+    transform: translateX(20px);
 }

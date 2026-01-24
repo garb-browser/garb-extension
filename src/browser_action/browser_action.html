@@ -3,58 +3,639 @@
 
 <head>
   <style type="text/css">
-    #mainPopup {
-      padding: 10px;
-      height: 250px;
-      width: 400px;
-      font-family: Helvetica, Ubuntu, Arial, sans-serif;
-      /* background-color: yellow; */
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
     }
 
-    h1 {
-      font-size: 2em;
+    /* Hide scrollbar but keep scroll functionality */
+    ::-webkit-scrollbar {
+      width: 0;
+      height: 0;
+      display: none;
+    }
+
+    * {
+      scrollbar-width: none; /* Firefox */
+      -ms-overflow-style: none; /* IE/Edge */
+    }
+
+    html, body {
+      overflow: hidden;
+    }
+
+    #mainPopup {
+      padding: 16px;
+      width: 340px;
+      max-height: 520px;
+      overflow-y: auto;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+      background-color: #f8f9fa;
+      border-radius: 12px;
+    }
+
+    .header {
+      text-align: center;
+      margin-bottom: 16px;
+      padding-bottom: 12px;
+      border-bottom: 1px solid #dee2e6;
+    }
+
+    .header h1 {
+      font-size: 18px;
+      font-weight: 600;
+      color: #212529;
+      margin-bottom: 4px;
+      letter-spacing: -0.3px;
+    }
+
+    .header .subtitle {
+      font-size: 11px;
+      color: #6c757d;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    /* Consent screen */
+    #consentScreen {
+      display: none;
+    }
+
+    .consent-content {
+      background: white;
+      padding: 16px;
+      border-radius: 8px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+      max-height: 380px;
+      overflow-y: auto;
+      scrollbar-width: none;
+      -ms-overflow-style: none;
+    }
+
+    .consent-content::-webkit-scrollbar {
+      display: none;
+    }
+
+    .consent-content h2 {
+      font-size: 16px;
+      margin-bottom: 12px;
+      color: #212529;
+    }
+
+    .consent-content p {
+      font-size: 13px;
+      line-height: 1.5;
+      color: #495057;
+      margin-bottom: 12px;
+    }
+
+    .consent-content ul {
+      font-size: 13px;
+      line-height: 1.5;
+      color: #495057;
+      margin: 0 0 12px 20px;
+    }
+
+    .consent-content li {
+      margin-bottom: 6px;
+    }
+
+    .consent-checkbox {
+      display: flex;
+      align-items: flex-start;
+      gap: 8px;
+      margin: 16px 0;
+      padding: 12px;
+      background: #f8f9fa;
+      border-radius: 6px;
+    }
+
+    .consent-checkbox input {
+      margin-top: 2px;
+    }
+
+    .consent-checkbox label {
+      font-size: 13px;
+      color: #212529;
+    }
+
+    /* Status indicator */
+    .status-bar {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      padding: 6px 10px;
+      border-radius: 20px;
+      margin-bottom: 12px;
+      font-size: 12px;
+      font-weight: 500;
+    }
+
+    .status-bar.connected {
+      background-color: #d4edda;
+      color: #155724;
+    }
+
+    .status-bar.disconnected {
+      background-color: #fee2e2;
+      color: #991b1b;
+    }
+
+    .status-bar.pending {
+      background-color: #fef3c7;
+      color: #92400e;
+    }
+
+    .status-dot {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+    }
+
+    .status-bar.connected .status-dot {
+      background-color: #22c55e;
+      box-shadow: 0 0 4px #22c55e;
+    }
+
+    .status-bar.disconnected .status-dot {
+      background-color: #ef4444;
+    }
+
+    .status-bar.pending .status-dot {
+      background-color: #f59e0b;
+      animation: pulse 1.5s infinite;
+    }
+
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.4; }
+    }
+
+    /* Participant ID badge */
+    .participant-badge {
+      text-align: center;
+      padding: 6px 10px;
+      background: linear-gradient(135deg, #e7f1ff 0%, #f0f7ff 100%);
+      border-radius: 6px;
+      margin-bottom: 12px;
+      font-size: 11px;
+      color: #0066cc;
+    }
+
+    .participant-badge strong {
+      font-family: 'SF Mono', 'Monaco', 'Menlo', monospace;
+      font-size: 12px;
+      letter-spacing: 0.5px;
+    }
+
+    /* Login form */
+    #login {
+      background: white;
+      padding: 14px;
+      border-radius: 8px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+    }
+
+    .form-group {
+      margin-bottom: 10px;
+    }
+
+    .form-group label {
+      display: block;
+      font-size: 11px;
+      font-weight: 600;
+      color: #495057;
+      margin-bottom: 4px;
+      text-transform: uppercase;
+      letter-spacing: 0.3px;
+    }
+
+    .form-group input {
+      width: 100%;
+      padding: 10px 12px;
+      border: 1.5px solid #e5e7eb;
+      border-radius: 6px;
+      font-size: 14px;
+      background: #fafafa;
+    }
+
+    .form-group input:focus {
+      outline: none;
+      border-color: #0066cc;
+      box-shadow: 0 0 0 3px rgba(0,102,204,0.15);
+      background: white;
+    }
+
+    .form-group input::placeholder {
+      color: #9ca3af;
+    }
+
+    .btn-group {
+      display: flex;
+      gap: 8px;
+      margin-top: 12px;
+    }
+
+    .btn {
+      flex: 1;
+      padding: 10px 16px;
+      border: none;
+      border-radius: 6px;
+      font-size: 13px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: all 0.15s ease;
+    }
+
+    .btn-primary {
+      background: linear-gradient(135deg, #0066cc 0%, #0052a3 100%);
+      color: white;
+      box-shadow: 0 2px 4px rgba(0, 102, 204, 0.2);
+    }
+
+    .btn-primary:hover {
+      background: linear-gradient(135deg, #0052a3 0%, #003d7a 100%);
+      box-shadow: 0 3px 6px rgba(0, 102, 204, 0.3);
+      transform: translateY(-1px);
+    }
+
+    .btn-secondary {
+      background-color: #6b7280;
+      color: white;
+    }
+
+    .btn-secondary:hover {
+      background-color: #4b5563;
+    }
+
+    .btn-success {
+      background: linear-gradient(135deg, #22c55e 0%, #16a34a 100%);
+      color: white;
+      box-shadow: 0 2px 4px rgba(34, 197, 94, 0.25);
+    }
+
+    .btn-success:hover {
+      background: linear-gradient(135deg, #16a34a 0%, #15803d 100%);
+      box-shadow: 0 3px 6px rgba(34, 197, 94, 0.35);
+      transform: translateY(-1px);
+    }
+
+    .btn-danger {
+      background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
+      color: white;
+      box-shadow: 0 2px 4px rgba(239, 68, 68, 0.25);
+    }
+
+    .btn-danger:hover {
+      background: linear-gradient(135deg, #dc2626 0%, #b91c1c 100%);
+      box-shadow: 0 3px 6px rgba(239, 68, 68, 0.35);
+    }
+
+    .btn-outline {
+      background-color: transparent;
+      border: 1.5px solid #e5e7eb;
+      color: #4b5563;
+    }
+
+    .btn-outline:hover {
+      background-color: #f3f4f6;
+      border-color: #d1d5db;
+    }
+
+    .btn-lg {
+      padding: 12px 20px;
+      font-size: 14px;
+    }
+
+    .btn:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+      transform: none !important;
+      box-shadow: none !important;
+    }
+
+    .btn:active:not(:disabled) {
+      transform: translateY(0);
+    }
+
+    /* Logged in view */
+    #login2 {
+      display: none;
+    }
+
+    .user-info {
+      background: white;
+      padding: 10px 14px;
+      border-radius: 8px;
+      margin-bottom: 12px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+    }
+
+    .user-info .username {
+      font-weight: 500;
+      font-size: 14px;
+      color: #212529;
+    }
+
+    .user-info .btn {
+      flex: none;
+      padding: 5px 10px;
+      font-size: 11px;
+    }
+
+    /* Activate button */
+    .activate-section {
+      margin-bottom: 12px;
+    }
+
+    .activate-section .btn {
+      font-weight: 600;
+      letter-spacing: 0.3px;
+    }
+
+    /* Mode selection */
+    .mode-section {
+      background: white;
+      padding: 12px;
+      border-radius: 8px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+      margin-bottom: 12px;
+    }
+
+    .mode-section h3 {
+      font-size: 12px;
+      font-weight: 600;
+      color: #495057;
+      margin-bottom: 10px;
+      text-transform: uppercase;
+      letter-spacing: 0.3px;
+    }
+
+    .mode-buttons {
+      display: flex;
+      gap: 8px;
+    }
+
+    .mode-btn {
+      flex: 1;
+      display: flex;
+      align-items: center;
+      padding: 10px 12px;
+      border: 1.5px solid #dee2e6;
+      border-radius: 8px;
+      background: white;
+      cursor: pointer;
+      transition: all 0.15s;
+      text-align: left;
+    }
+
+    .mode-btn:hover {
+      border-color: #0066cc;
+      background: #f8f9ff;
+    }
+
+    .mode-btn.active {
+      border-color: #0066cc;
+      background: #e7f1ff;
+    }
+
+    .mode-btn .mode-icon {
+      width: 24px;
+      height: 24px;
+      border-radius: 4px;
+      margin-right: 10px;
+      flex-shrink: 0;
+    }
+
+    .mode-btn .mode-info h4 {
+      font-size: 12px;
+      font-weight: 500;
+      color: #212529;
+      margin-bottom: 1px;
+    }
+
+    .mode-btn .mode-info p {
+      font-size: 10px;
+      color: #6c757d;
+      margin: 0;
+    }
+
+    #mode1 .mode-icon {
+      background: linear-gradient(135deg, #4dabf7, #e7f1ff);
+    }
+
+    #mode2 .mode-icon {
+      background: linear-gradient(135deg, #ffc078, #ffe8cc);
+    }
+
+    /* Messages */
+    #signInMessage {
+      margin-top: 12px;
+      padding: 8px 12px;
+      border-radius: 4px;
+      font-size: 13px;
+      text-align: center;
+    }
+
+    #signInMessage:empty {
+      display: none;
+    }
+
+    #signInMessage.error {
+      background-color: #f8d7da;
+      color: #721c24;
+    }
+
+    #signInMessage.success {
+      background-color: #d4edda;
+      color: #155724;
+    }
+
+    /* Instructions */
+    .instructions {
+      padding: 10px 12px;
+      background: linear-gradient(135deg, #e7f1ff 0%, #f0f7ff 100%);
+      border-radius: 6px;
+      font-size: 11px;
+      color: #0066cc;
+      margin-bottom: 12px;
+      border-left: 3px solid #0066cc;
+    }
+
+    .instructions strong {
+      font-size: 12px;
+    }
+
+    .instructions ol {
+      margin: 6px 0 0 16px;
+      padding: 0;
+    }
+
+    .instructions li {
+      margin-bottom: 2px;
+    }
+
+    /* Footer actions */
+    .footer-actions {
+      display: flex;
+      gap: 8px;
+      padding-top: 12px;
+      margin-top: 8px;
+      border-top: 1px solid #dee2e6;
+    }
+
+    .footer-actions .btn {
+      font-size: 11px;
+      padding: 6px 10px;
+    }
+
+    /* Main content area */
+    #mainContent {
+      display: none;
+    }
+
+    /* Smooth transitions */
+    .btn, .mode-btn, input {
+      transition: all 0.15s ease;
+    }
+
+    /* Better focus states */
+    .btn:focus, .mode-btn:focus {
+      outline: none;
+      box-shadow: 0 0 0 3px rgba(0, 102, 204, 0.25);
     }
   </style>
 </head>
 
 <body>
   <div id="mainPopup">
-    <h1>Eye tracking research</h1>
-    <p>More fancy stuff will go here ...</p>
-    <p>To shut this popup down, edit the manifest file and remove the "default popup" key. To edit it, just edit
-      ext/browser_action/browser_action.html. The CSS is there, too.</p>
-    <div id="login">
-      <form id="formLogin">
-        <!-- Username -->
-        <label for="username">Username:</label><br>
-        <input type="text" id="username" name="username"><br>
-        <!-- Password -->
-        <label for="password">Password:</label><br>
-        <input type="text" id="password" name="password"><br>
-      </form>
-      <button id="signin">Sign in</button>
-      <button id="signup">Sign Up</button>
+    <div class="header">
+      <h1>GARB Eye Tracker</h1>
+      <div class="subtitle">Gaze-Aware Reading Browser</div>
     </div>
-    <div id="login2">
-      <div>
-        <button id="signout">Sign Out</button>
-        <button id="extActivateButton">Activate</button>
-      </div>
-      <div id="modes">
-        <p> Modes: </p>
-        <button id="mode1"> Mode 1 </button>
-        <button id="mode2"> Mode 2 </button>
-        <button id="mode3"> Mode 3 </button>
-        <button id="mode4"> Mode 4 </button>
-        <button id="mode5"> Mode 5 </button>
-        <button id="mode6"> Mode 6 </button>
-        <button id="mode7"> Mode 7 </button>
-        <button id="mode8"> Mode 8 </button>
-        <button id="mode9"> Mode 9 </button>
-        <button id="mode10"> Mode 10 </button>
+
+    <!-- Consent Screen (shown first if not consented) -->
+    <div id="consentScreen">
+      <div class="consent-content">
+        <h2>Research Participation Consent</h2>
+        <p>Welcome to the GARB Eye Tracking Research Study. Before participating, please read and agree to the following:</p>
+
+        <p><strong>Purpose:</strong> This extension tracks where you look while reading online articles to help us understand reading patterns and improve reading assistance tools.</p>
+
+        <p><strong>What we collect:</strong></p>
+        <ul>
+          <li>Eye gaze coordinates while reading</li>
+          <li>Time spent on each line of text</li>
+          <li>URLs and titles of articles you read while the extension is active</li>
+          <li>Reading session timestamps</li>
+        </ul>
+
+        <p><strong>What we DON'T collect:</strong></p>
+        <ul>
+          <li>Passwords or personal information</li>
+          <li>Browsing history when extension is not activated</li>
+          <li>Any data from non-article pages</li>
+        </ul>
+
+        <p><strong>Your rights:</strong></p>
+        <ul>
+          <li>You can withdraw at any time by clicking "Revoke Consent"</li>
+          <li>You can export your data at any time</li>
+          <li>Your data will be anonymized using a participant ID</li>
+        </ul>
+
+        <div class="consent-checkbox">
+          <input type="checkbox" id="consentCheckbox">
+          <label for="consentCheckbox">I have read and understood the above information. I voluntarily agree to participate in this research study.</label>
+        </div>
+
+        <button id="giveConsentBtn" class="btn btn-success btn-lg" style="width: 100%;" disabled>
+          I Agree - Start Participating
+        </button>
       </div>
     </div>
-    <div id="signInMessage"> </div>
+
+    <!-- Main Content (shown after consent) -->
+    <div id="mainContent">
+      <div id="statusBar" class="status-bar disconnected">
+        <span class="status-dot"></span>
+        <span id="statusText">Not activated</span>
+      </div>
+
+      <div id="participantBadge" class="participant-badge">
+        Participant ID: <strong id="participantIdDisplay">---</strong>
+      </div>
+
+      <!-- Login View -->
+      <div id="login">
+        <div class="form-group">
+          <label for="username">Username</label>
+          <input type="text" id="username" name="username" placeholder="Enter username">
+        </div>
+        <div class="form-group">
+          <label for="password">Password</label>
+          <input type="password" id="password" name="password" placeholder="Enter password">
+        </div>
+        <div class="btn-group">
+          <button id="signin" class="btn btn-primary">Sign In</button>
+          <button id="signup" class="btn btn-secondary">Sign Up</button>
+        </div>
+        <div id="signInMessage"></div>
+      </div>
+
+      <!-- Logged In View -->
+      <div id="login2">
+        <div class="user-info">
+          <span class="username" id="displayUsername">User</span>
+          <button id="signout" class="btn btn-secondary">Sign Out</button>
+        </div>
+
+        <div class="activate-section">
+          <button id="extActivateButton" class="btn btn-success btn-lg" style="width: 100%;">
+            Activate Eye Tracking
+          </button>
+        </div>
+
+        <div class="mode-section">
+          <h3>Visualization Mode</h3>
+          <div class="mode-buttons">
+            <button id="mode1" class="mode-btn active">
+              <div class="mode-icon"></div>
+              <div class="mode-info">
+                <h4>Simple Highlighting</h4>
+                <p>Blue gradient shows reading progress</p>
+              </div>
+            </button>
+            <button id="mode2" class="mode-btn">
+              <div class="mode-icon"></div>
+              <div class="mode-info">
+                <h4>Comparison Mode</h4>
+                <p>Compare your reading to average patterns</p>
+              </div>
+            </button>
+          </div>
+        </div>
+
+        <div class="instructions">
+          <strong>How to use:</strong>
+          <ol>
+            <li>Navigate to an article you want to read</li>
+            <li>Click "Activate Eye Tracking"</li>
+            <li>Read normally - lines will highlight as you read</li>
+          </ol>
+        </div>
+
+        <div class="footer-actions">
+          <button id="exportDataBtn" class="btn btn-outline">Export My Data</button>
+          <button id="revokeConsentBtn" class="btn btn-outline">Revoke Consent</button>
+        </div>
+      </div>
+    </div>
   </div>
 </body>
 <script src="./dostuff.js"></script>

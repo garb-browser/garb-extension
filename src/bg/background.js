@@ -1,78 +1,213 @@
-// https://stackoverflow.com/questions/55637406/how-to-remove-this-cross-origin-read-blocking-corb-blocked-cross-origin-respo
-// https://www.chromium.org/Home/chromium-security/extension-content-script-fetches
-// https://developer.mozilla.org/en-US/docs/Web/HTTP/CORS
-// https://developer.chrome.com/extensions/background_pages
-// https://developer.mozilla.org/en-US/docs/Web/API/Fetch_API/Using_Fetch
-// https://developer.mozilla.org/en-US/docs/Learn/JavaScript/Client-side_web_APIs/Fetching_data
-// https://developer.chrome.com/extensions/runtime#method-sendMessage
-// https://scotch.io/tutorials/how-to-use-the-javascript-fetch-api-to-get-data
+/**
+ * GARB Extension - Background Service Worker
+ * Handles authentication, API calls, and participant management
+ */
 
 const API_URL = "https://garb-api-service.onrender.com";
-const EXTRACT_URL = "https://garb-extraction-service.onrender.com";
+// const EXTRACT_URL = "https://garb-extraction-service.onrender.com";
+const EXTRACT_URL = "http://localhost:9000";
 
-let authenticated = true;
-let authUser = 'testUser';
+// Authentication state
+let authenticated = false;
+let authUser = '';
 let authCode = 0;
 let contentScriptTabId = 0;
+
+// Participant management
+let participantId = null;
+let hasConsented = false;
+
+// Initialize on startup
+chrome.runtime.onInstalled.addListener(() => {
+    console.log("GARB Extension installed/updated");
+    loadStoredState();
+});
+
+// Load stored state on service worker start
+loadStoredState();
+
+async function loadStoredState() {
+    try {
+        const data = await chrome.storage.local.get(['participantId', 'hasConsented', 'authUser']);
+        if (data.participantId) {
+            participantId = data.participantId;
+        }
+        if (data.hasConsented) {
+            hasConsented = data.hasConsented;
+        }
+        if (data.authUser) {
+            authUser = data.authUser;
+            authenticated = true;
+        }
+        console.log("Loaded state:", { participantId, hasConsented, authUser: !!authUser });
+    } catch (error) {
+        console.error("Error loading stored state:", error);
+    }
+}
+
+// Generate a unique participant ID
+function generateParticipantId() {
+    const timestamp = Date.now().toString(36);
+    const randomPart = Math.random().toString(36).substring(2, 8);
+    return `P-${timestamp}-${randomPart}`.toUpperCase();
+}
 
 chrome.runtime.onMessage.addListener(
     function(request, sender, sendResponse) {
 
-      // NEW: Handle popup actions
-      if (request.action === "getAuthState") {
-        sendResponse({
-          user: authUser,
-          authenticated: authenticated,
-          authCode: authCode
+      // === CONSENT & PARTICIPANT MANAGEMENT ===
+
+      if (request.action === "getConsentState") {
+        // Read directly from storage to avoid race conditions with service worker startup
+        chrome.storage.local.get(['participantId', 'hasConsented']).then(data => {
+          // Also update global state
+          if (data.hasConsented) hasConsented = data.hasConsented;
+          if (data.participantId) participantId = data.participantId;
+
+          sendResponse({
+            hasConsented: data.hasConsented || false,
+            participantId: data.participantId || null
+          });
+        }).catch(error => {
+          console.error("Error reading consent state:", error);
+          sendResponse({
+            hasConsented: hasConsented,
+            participantId: participantId
+          });
         });
         return true;
       }
-      
+
+      else if (request.action === "giveConsent") {
+        hasConsented = true;
+        participantId = generateParticipantId();
+        chrome.storage.local.set({
+            hasConsented: true,
+            participantId: participantId
+        });
+        sendResponse({
+            success: true,
+            participantId: participantId
+        });
+        return true;
+      }
+
+      else if (request.action === "revokeConsent") {
+        hasConsented = false;
+        participantId = null;
+        authenticated = false;
+        authUser = '';
+        chrome.storage.local.clear();
+        sendResponse({ success: true });
+        return true;
+      }
+
+      // === AUTHENTICATION ===
+
+      else if (request.action === "getAuthState") {
+        // Read directly from storage to avoid race conditions with service worker startup
+        chrome.storage.local.get(['participantId', 'hasConsented', 'authUser']).then(data => {
+          // Also update global state
+          if (data.hasConsented) hasConsented = data.hasConsented;
+          if (data.participantId) participantId = data.participantId;
+          if (data.authUser) {
+            authUser = data.authUser;
+            authenticated = true;
+          }
+
+          sendResponse({
+            user: data.authUser || authUser,
+            authenticated: !!data.authUser || authenticated,
+            authCode: authCode,
+            participantId: data.participantId || participantId,
+            hasConsented: data.hasConsented || hasConsented
+          });
+        }).catch(error => {
+          console.error("Error reading auth state:", error);
+          sendResponse({
+            user: authUser,
+            authenticated: authenticated,
+            authCode: authCode,
+            participantId: participantId,
+            hasConsented: hasConsented
+          });
+        });
+        return true;
+      }
+
       else if (request.action === "signin") {
         signin(request.username, request.password).then(() => {
           sendResponse({ success: true, authCode: authCode });
         });
         return true;
       }
-      
+
       else if (request.action === "signup") {
         signup(request.username, request.password).then(() => {
           sendResponse({ success: true, authCode: authCode });
         });
         return true;
       }
-      
+
       else if (request.action === "signout") {
         signout();
         sendResponse({ success: true });
         return true;
       }
-      
+
       else if (request.action === "sendMode") {
         sendMode(request.mode);
         sendResponse({ success: true });
         return true;
       }
 
+      // === DATA EXPORT ===
+
+      else if (request.action === "exportData") {
+        exportParticipantData(request.user).then(data => {
+            sendResponse({ success: true, data: data });
+        }).catch(error => {
+            sendResponse({ success: false, error: error.message });
+        });
+        return true;
+      }
+
       // Request to scrape the webpage and return the text data
+      // Always uses raw HTML from the extension for reliability (avoids rate limiting)
       if (request.contentScriptQuery == "extractURLContent") {
-        var url = EXTRACT_URL;
-        fetch(url, {
+        const extractUrl = EXTRACT_URL;
+        const requestData = request.data;
+
+        // Support both old format (string) and new format (object with url and html)
+        const targetUrl = typeof requestData === 'string' ? requestData : requestData.url;
+        const pageHtml = typeof requestData === 'object' ? requestData.html : null;
+
+        console.log("Extracting:", targetUrl);
+
+        // Always send raw HTML directly - faster and avoids rate limiting
+        fetch(extractUrl, {
             method: "POST",
-            mode: "cors", // no-cors, cors, *same-origin
-            credentials: "same-origin", // include, *same-origin, omit
+            mode: "cors",
+            credentials: "same-origin",
             headers: {
-                "Content-Type": "text/plain",
+                "Content-Type": "application/json",
             },
-            redirect: "follow", // manual, *follow, error
-            referrer: "no-referrer", // no-referrer, *client
-            body: request.data, // body data type must match "Content-Type" header
+            redirect: "follow",
+            referrer: "no-referrer",
+            body: JSON.stringify({ url: targetUrl, html: pageHtml }),
         })
-        .then((resp) => resp.json()) // Transform the data into json
+        .then((resp) => {
+            console.log("Extraction response status:", resp.status);
+            return resp.json();
+        })
         .then(function(data) {
+            console.log("Extraction result:", data.title || data.error || "unknown");
             sendResponse(data);
-          })
-        .catch(error => console.log(error))
+        })
+        .catch(error => {
+            console.error("Extraction error:", error);
+            sendResponse({ error: error.message, content: '', formatted_content: [] });
+        });
         return true;  // Will respond asynchronously.
       }
 
@@ -118,7 +253,7 @@ chrome.runtime.onMessage.addListener(
         // Get the user and url
         var user = request.data.user;
         var pageUrl = encodeURIComponent(request.data.url);
-        var url = `${API_URL}//pageSessions/${user}/${pageUrl}`;
+        var url = `${API_URL}/pageSessions/${user}/${pageUrl}`;
         console.log(url);  // Use console.log instead of alert
 
         fetch(url, {
@@ -233,7 +368,7 @@ async function signup(username, password) {
   var url = `${API_URL}/signup`;
 
   // Fetch request
-  fetch(url, {
+  await fetch(url, {
       method: "POST",
       mode: "cors", // no-cors, cors, *same-origin
       credentials: "same-origin", // include, *same-origin, omit
@@ -249,6 +384,10 @@ async function signup(username, password) {
     authenticated = resp.ok;
     authCode = resp.status;
     authUser = username;
+    // Persist auth state to storage on successful signup
+    if (resp.ok) {
+      chrome.storage.local.set({ authUser: username });
+    }
   })
   .catch(error => {
     console.log(error);
@@ -261,7 +400,7 @@ async function signup(username, password) {
 // Function to sign in ------------------------------
 async function signin(username, password) {
   const fields = {username, password};
-  var url = `${API_URL}//signin`;
+  var url = `${API_URL}/signin`;
 
   // Fetch request
   await fetch(url, {
@@ -280,6 +419,10 @@ async function signin(username, password) {
     authenticated = resp.ok;
     authCode = resp.status;
     authUser = username;
+    // Persist auth state to storage on successful signin
+    if (resp.ok) {
+      chrome.storage.local.set({ authUser: username });
+    }
   })
   .catch((error) => {
     console.log(error);
@@ -290,25 +433,56 @@ async function signin(username, password) {
 
 function signout() {
   authenticated = false;
+  authUser = '';
+  chrome.storage.local.remove(['authUser']);
 }
 
 
-/**************** PRE SET ****************/
+// === DATA EXPORT ===
 
-// if you checked "fancy-settings" in extensionizr.com, uncomment this lines
+async function exportParticipantData(username) {
+    const user = username || authUser;
+    if (!user) {
+        throw new Error("No user specified for export");
+    }
 
-// var settings = new Store("settings", {
-//     "sample_setting": "This is how you use Store.js to remember values"
-// });
+    const url = `${API_URL}/pageSessions/${user}`;
 
+    try {
+        const response = await fetch(url, {
+            method: "GET",
+            mode: "cors",
+            headers: {
+                "Content-Type": "application/json",
+            },
+        });
 
-//example of using a message handler from the inject scripts
-// chrome.extension.onMessage.addListener(
-//   function(request, sender, sendResponse) {
-//   	chrome.pageAction.show(sender.tab.id);
-//     sendResponse();
-//   });
+        if (!response.ok) {
+            throw new Error(`Failed to fetch data: ${response.status}`);
+        }
 
-// chrome.browserAction.onClicked.addListener(function(activeTab) {
-//   chrome.tabs.executeScript(null, {file: "content.js"});
-// });s
+        const sessions = await response.json();
+
+        // Format data for export
+        const exportData = {
+            participantId: participantId,
+            username: user,
+            exportDate: new Date().toISOString(),
+            totalSessions: sessions.length,
+            sessions: sessions.map(session => ({
+                url: session.url,
+                title: session.title,
+                timestampStart: session.timestampStart,
+                timestampEnd: session.timestampEnd,
+                durationMs: session.timestampEnd - session.timestampStart,
+                sessionClosed: session.sessionClosed,
+                quadFreqs: session.quadFreqs
+            }))
+        };
+
+        return exportData;
+    } catch (error) {
+        console.error("Export error:", error);
+        throw error;
+    }
+}
