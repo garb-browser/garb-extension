@@ -213,38 +213,149 @@ chrome.runtime.onMessage.addListener(
 
       // Request to save the current pagesession data to the database
       else if (request.contentScriptQuery == "saveToDatabase") {
-        // alert("inside savetodatabase")  // REMOVE - alert doesn't work in MV3
-        var url = `${API_URL}/pageSessions`;
-        console.log("saving to DB");  // Use console.log instead of alert
-        //const testData = {
-        //    url: 'testURL',
-        //    title: 'title',
-        //    user: 1,
-        //    timestampStart: 0,
-        //    timestampEnd: 10,
-        //    sessionClosed: true,
-        //    quadFreqs: [[10, 10, 10, 10], [11, 11, 11, 11]]
-        //  };
+        // Validate request data
+        if (!request.data) {
+            console.error("GARB: No data provided for saveToDatabase");
+            sendResponse({ error: "No data provided" });
+            return true;
+        }
+
+        const url = `${API_URL}/pageSessions`;
+        console.log("GARB: Saving session to DB for user:", request.data?.user);
+
+        // Safely stringify and check payload size
+        let jsonPayload;
+        try {
+            jsonPayload = JSON.stringify(request.data);
+            const payloadSizeKB = Math.round(jsonPayload.length / 1024);
+            console.log(`GARB: Payload size: ${payloadSizeKB}KB`);
+
+            // Log size breakdown for debugging
+            const sizeBreakdown = {};
+            for (const key of Object.keys(request.data)) {
+                const fieldSize = JSON.stringify(request.data[key]).length;
+                if (fieldSize > 1000) {
+                    sizeBreakdown[key] = Math.round(fieldSize / 1024) + 'KB';
+                }
+            }
+            if (Object.keys(sizeBreakdown).length > 0) {
+                console.log("GARB: Large fields:", sizeBreakdown);
+            }
+
+            // Warn if payload is very large
+            if (payloadSizeKB > 800) {
+                console.warn(`GARB: Payload is large (${payloadSizeKB}KB) - may cause 413 errors`);
+            }
+
+            console.log("GARB: Session data preview:", jsonPayload.substring(0, 500));
+        } catch (e) {
+            console.log("GARB: Could not stringify data for logging");
+            jsonPayload = JSON.stringify(request.data);
+        }
 
         fetch(url, {
             method: "POST",
-            mode: "cors", // no-cors, cors, *same-origin
-            credentials: "same-origin", // include, *same-origin, omit
+            mode: "cors",
+            credentials: "same-origin",
             headers: {
                 "Content-Type": "application/json",
             },
-            redirect: "follow", // manual, *follow, error
-            referrer: "no-referrer", // no-referrer, *client
-            body: JSON.stringify(request.data), // body data type must match "Content-Type" header
+            redirect: "follow",
+            referrer: "no-referrer",
+            body: jsonPayload, // Use pre-stringified payload
         })
-        .then((resp) => resp.json()) // Transform the data into json
+        .then((resp) => {
+            console.log("GARB: Save response status:", resp.status);
+            if (!resp.ok) {
+                // Try to get error details from response body
+                return resp.text().then(text => {
+                    throw new Error(`Save failed (${resp.status}): ${text.substring(0, 200)}`);
+                });
+            }
+            return resp.json();
+        })
         .then(function(data) {
+            console.log("GARB: Session saved successfully:", data);
             sendResponse(data);
-          })
-        .catch(error => console.log(error))
-        return true;  // Will respond asynchronously.
-        
-      
+        })
+        .catch(error => {
+            console.error("GARB: Save error:", error);
+            sendResponse({ error: error.message || "Unknown save error" });
+        });
+        return true;
+      }
+
+      // Save survey responses to the most recent session
+      else if (request.contentScriptQuery == "saveSurveyResponses") {
+        console.log("Saving survey responses", request.data);
+
+        // Get user from request data or fall back to authUser
+        const user = request.data.user || authUser;
+        if (!user) {
+            console.error("No user found for saving survey");
+            sendResponse({ success: false, error: "No user logged in" });
+            return true;
+        }
+
+        // First get the most recent session for this user/url to update it
+        const encodedUrl = encodeURIComponent(request.data.url);
+        const getUrl = `${API_URL}/pageSessions/${user}/${encodedUrl}`;
+        console.log("Fetching sessions from:", getUrl);
+
+        fetch(getUrl)
+            .then(resp => {
+                if (!resp.ok) {
+                    throw new Error(`Failed to fetch sessions: ${resp.status}`);
+                }
+                return resp.json();
+            })
+            .then(sessions => {
+                console.log("Found sessions:", sessions);
+
+                // Defensive check: ensure sessions is an array
+                if (!Array.isArray(sessions)) {
+                    console.error("Expected array of sessions, got:", typeof sessions);
+                    throw new Error("Invalid response from server - expected array of sessions");
+                }
+
+                if (sessions.length > 0) {
+                    // Get the most recent session (create a copy to avoid mutating original)
+                    const sortedSessions = [...sessions].sort((a, b) =>
+                        new Date(b.timestampStart || 0) - new Date(a.timestampStart || 0)
+                    );
+                    const mostRecent = sortedSessions[0];
+
+                    console.log("Updating session:", mostRecent._id);
+
+                    // Update it with survey responses
+                    const updateUrl = `${API_URL}/pageSessions/${mostRecent._id}`;
+                    return fetch(updateUrl, {
+                        method: "PATCH",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({
+                            survey_responses: request.data.survey_responses
+                        })
+                    });
+                } else {
+                    throw new Error("No session found to update");
+                }
+            })
+            .then(resp => {
+                if (!resp.ok) {
+                    throw new Error(`Failed to update session: ${resp.status}`);
+                }
+                return resp.json();
+            })
+            .then(data => {
+                console.log("Survey responses saved:", data);
+                sendResponse({ success: true, data: data });
+            })
+            .catch(error => {
+                console.error("Error saving survey:", error);
+                sendResponse({ success: false, error: error.message });
+            });
+
+        return true;
       }
       
       // Request to get a pagesession object from the database
@@ -446,7 +557,8 @@ async function exportParticipantData(username) {
         throw new Error("No user specified for export");
     }
 
-    const url = `${API_URL}/pageSessions/${user}`;
+    // Use the correct API endpoint for getting all user sessions
+    const url = `${API_URL}/pageSessions/user/${user}`;
 
     try {
         const response = await fetch(url, {
@@ -463,19 +575,73 @@ async function exportParticipantData(username) {
 
         const sessions = await response.json();
 
-        // Format data for export
+        // Format data for export - include all research data
         const exportData = {
             participantId: participantId,
             username: user,
             exportDate: new Date().toISOString(),
             totalSessions: sessions.length,
+
+            // === METHOD DOCUMENTATION (for research paper reporting) ===
+            methods: {
+                eye_tracker: {
+                    model: "Tobii Eye Tracker 5",
+                    type: "Consumer-grade screen-based",
+                    sampling_rate_hz: 60,
+                    calibration: "Native Tobii 9-point calibration",
+                    data_access: "WebSocket connection to local Tobii service"
+                },
+                gaze_processing: {
+                    smoothing: "Exponential Moving Average (alpha=0.3, adaptive based on velocity)",
+                    fixation_detection: "I-VT algorithm (velocity threshold 30px/sample, minimum duration 100ms)",
+                    saccade_detection: "Velocity threshold (800px/sec with 50ms freeze period)"
+                },
+                line_tracking: {
+                    aoi_definition: "Line bounding rectangles from DOM .garb-line elements",
+                    line_lock: "Hysteresis-based (time=250ms dwell, margin=40px instant switch)",
+                    word_tracking: "Progressive fill indicator (advances with gaze, never regresses)"
+                },
+                data_quality: {
+                    confidence_calculation: "Velocity + spatial consistency based (0-1 scale)",
+                    tracking_lost_threshold: "2000ms without valid gaze on text",
+                    blink_detection: "Data gaps 100-500ms classified as blinks",
+                    precision_measure: "RMS of gaze variance during fixations (pixels)"
+                },
+                limitations: [
+                    "Accuracy: No ground truth targets - confidence is a proxy only",
+                    "Pupil diameter: Not available from consumer Tobii SDK",
+                    "Viewing distance: Not measured (no depth camera)",
+                    "Lighting conditions: Not measurable from browser",
+                    "Head movement: Limited compensation from consumer tracker"
+                ]
+            },
+
             sessions: sessions.map(session => ({
+                // Core session info
+                sessionId: session._id,
                 url: session.url,
                 title: session.title,
                 timestampStart: session.timestampStart,
                 timestampEnd: session.timestampEnd,
-                durationMs: session.timestampEnd - session.timestampStart,
+                durationMs: session.timestampEnd && session.timestampStart
+                    ? new Date(session.timestampEnd) - new Date(session.timestampStart)
+                    : null,
                 sessionClosed: session.sessionClosed,
+
+                // Research data
+                summary: session.summary || null,
+                settings_snapshot: session.settings_snapshot || null,
+                survey_responses: session.survey_responses || null,
+
+                // Device and environment metadata
+                device_metadata: session.device_metadata || null,
+                processing_methods: session.processing_methods || null,
+
+                // Event streams (JSONL strings)
+                gaze_events_jsonl: session.gaze_events_jsonl || '',
+                ui_events_jsonl: session.ui_events_jsonl || '',
+
+                // Legacy data
                 quadFreqs: session.quadFreqs
             }))
         };

@@ -26,35 +26,36 @@
     }
 
     #mainPopup {
-      padding: 16px;
-      width: 340px;
+      padding: 20px;
+      width: 320px;
       max-height: 520px;
       overflow-y: auto;
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
-      background-color: #f8f9fa;
-      border-radius: 12px;
+      font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI', sans-serif;
+      background-color: #f5f5f7;
+      border-radius: 0;
     }
 
     .header {
       text-align: center;
-      margin-bottom: 16px;
-      padding-bottom: 12px;
-      border-bottom: 1px solid #dee2e6;
+      margin-bottom: 20px;
+      padding-bottom: 0;
+      border-bottom: none;
     }
 
     .header h1 {
-      font-size: 18px;
+      font-size: 17px;
       font-weight: 600;
-      color: #212529;
-      margin-bottom: 4px;
-      letter-spacing: -0.3px;
+      color: #1d1d1f;
+      margin-bottom: 2px;
+      letter-spacing: -0.4px;
     }
 
     .header .subtitle {
       font-size: 11px;
-      color: #6c757d;
-      text-transform: uppercase;
-      letter-spacing: 0.5px;
+      color: #86868b;
+      text-transform: none;
+      letter-spacing: 0;
+      font-weight: 400;
     }
 
     /* Consent screen */
@@ -64,9 +65,9 @@
 
     .consent-content {
       background: white;
-      padding: 16px;
-      border-radius: 8px;
-      box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+      padding: 20px;
+      border-radius: 12px;
+      box-shadow: none;
       max-height: 380px;
       overflow-y: auto;
       scrollbar-width: none;
@@ -78,46 +79,49 @@
     }
 
     .consent-content h2 {
-      font-size: 16px;
-      margin-bottom: 12px;
-      color: #212529;
+      font-size: 15px;
+      font-weight: 600;
+      margin-bottom: 14px;
+      color: #1d1d1f;
     }
 
     .consent-content p {
-      font-size: 13px;
-      line-height: 1.5;
-      color: #495057;
+      font-size: 12px;
+      line-height: 1.6;
+      color: #515154;
       margin-bottom: 12px;
     }
 
     .consent-content ul {
-      font-size: 13px;
-      line-height: 1.5;
-      color: #495057;
-      margin: 0 0 12px 20px;
+      font-size: 12px;
+      line-height: 1.6;
+      color: #515154;
+      margin: 0 0 12px 18px;
     }
 
     .consent-content li {
-      margin-bottom: 6px;
+      margin-bottom: 4px;
     }
 
     .consent-checkbox {
       display: flex;
       align-items: flex-start;
-      gap: 8px;
+      gap: 10px;
       margin: 16px 0;
-      padding: 12px;
-      background: #f8f9fa;
-      border-radius: 6px;
+      padding: 14px;
+      background: #f5f5f7;
+      border-radius: 10px;
     }
 
     .consent-checkbox input {
       margin-top: 2px;
+      accent-color: #1d1d1f;
     }
 
     .consent-checkbox label {
-      font-size: 13px;
-      color: #212529;
+      font-size: 12px;
+      color: #1d1d1f;
+      line-height: 1.5;
     }
 
     /* Status indicator */
@@ -126,26 +130,26 @@
       align-items: center;
       justify-content: center;
       gap: 6px;
-      padding: 6px 10px;
-      border-radius: 20px;
-      margin-bottom: 12px;
+      padding: 8px 14px;
+      border-radius: 8px;
+      margin-bottom: 16px;
       font-size: 12px;
       font-weight: 500;
     }
 
     .status-bar.connected {
-      background-color: #d4edda;
-      color: #155724;
+      background-color: rgba(52, 199, 89, 0.12);
+      color: #1d7a3a;
     }
 
     .status-bar.disconnected {
-      background-color: #fee2e2;
-      color: #991b1b;
+      background-color: rgba(255, 59, 48, 0.1);
+      color: #c93b33;
     }
 
     .status-bar.pending {
-      background-color: #fef3c7;
-      color: #92400e;
+      background-color: rgba(255, 149, 0, 0.12);
+      color: #b36b00;
     }
 
     .status-dot {
@@ -155,94 +159,94 @@
     }
 
     .status-bar.connected .status-dot {
-      background-color: #22c55e;
-      box-shadow: 0 0 4px #22c55e;
+      background-color: #34c759;
     }
 
     .status-bar.disconnected .status-dot {
-      background-color: #ef4444;
+      background-color: #ff3b30;
     }
 
     .status-bar.pending .status-dot {
-      background-color: #f59e0b;
-      animation: pulse 1.5s infinite;
+      background-color: #ff9500;
+      animation: pulse 2s infinite;
     }
 
     @keyframes pulse {
       0%, 100% { opacity: 1; }
-      50% { opacity: 0.4; }
+      50% { opacity: 0.3; }
     }
 
     /* Participant ID badge */
     .participant-badge {
       text-align: center;
-      padding: 6px 10px;
-      background: linear-gradient(135deg, #e7f1ff 0%, #f0f7ff 100%);
-      border-radius: 6px;
-      margin-bottom: 12px;
+      padding: 8px 12px;
+      background: #e8e8ed;
+      border-radius: 8px;
+      margin-bottom: 16px;
       font-size: 11px;
-      color: #0066cc;
+      color: #515154;
     }
 
     .participant-badge strong {
       font-family: 'SF Mono', 'Monaco', 'Menlo', monospace;
-      font-size: 12px;
-      letter-spacing: 0.5px;
+      font-size: 11px;
+      letter-spacing: 0.3px;
+      color: #1d1d1f;
     }
 
     /* Login form */
     #login {
       background: white;
-      padding: 14px;
-      border-radius: 8px;
-      box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+      padding: 16px;
+      border-radius: 12px;
+      box-shadow: none;
     }
 
     .form-group {
-      margin-bottom: 10px;
+      margin-bottom: 12px;
     }
 
     .form-group label {
       display: block;
-      font-size: 11px;
-      font-weight: 600;
-      color: #495057;
-      margin-bottom: 4px;
-      text-transform: uppercase;
-      letter-spacing: 0.3px;
+      font-size: 12px;
+      font-weight: 500;
+      color: #1d1d1f;
+      margin-bottom: 6px;
+      text-transform: none;
+      letter-spacing: 0;
     }
 
     .form-group input {
       width: 100%;
       padding: 10px 12px;
-      border: 1.5px solid #e5e7eb;
-      border-radius: 6px;
+      border: 1px solid #d2d2d7;
+      border-radius: 8px;
       font-size: 14px;
-      background: #fafafa;
+      background: #f5f5f7;
+      transition: all 0.15s ease;
     }
 
     .form-group input:focus {
       outline: none;
-      border-color: #0066cc;
-      box-shadow: 0 0 0 3px rgba(0,102,204,0.15);
+      border-color: #86868b;
       background: white;
     }
 
     .form-group input::placeholder {
-      color: #9ca3af;
+      color: #aeaeb2;
     }
 
     .btn-group {
       display: flex;
       gap: 8px;
-      margin-top: 12px;
+      margin-top: 14px;
     }
 
     .btn {
       flex: 1;
       padding: 10px 16px;
       border: none;
-      border-radius: 6px;
+      border-radius: 8px;
       font-size: 13px;
       font-weight: 500;
       cursor: pointer;
@@ -250,74 +254,75 @@
     }
 
     .btn-primary {
-      background: linear-gradient(135deg, #0066cc 0%, #0052a3 100%);
+      background: #1d1d1f;
       color: white;
-      box-shadow: 0 2px 4px rgba(0, 102, 204, 0.2);
     }
 
     .btn-primary:hover {
-      background: linear-gradient(135deg, #0052a3 0%, #003d7a 100%);
-      box-shadow: 0 3px 6px rgba(0, 102, 204, 0.3);
-      transform: translateY(-1px);
+      background: #000000;
     }
 
     .btn-secondary {
-      background-color: #6b7280;
-      color: white;
+      background-color: #e8e8ed;
+      color: #1d1d1f;
     }
 
     .btn-secondary:hover {
-      background-color: #4b5563;
+      background-color: #d2d2d7;
     }
 
     .btn-success {
-      background: linear-gradient(135deg, #22c55e 0%, #16a34a 100%);
+      background: #1d1d1f;
       color: white;
-      box-shadow: 0 2px 4px rgba(34, 197, 94, 0.25);
     }
 
     .btn-success:hover {
-      background: linear-gradient(135deg, #16a34a 0%, #15803d 100%);
-      box-shadow: 0 3px 6px rgba(34, 197, 94, 0.35);
-      transform: translateY(-1px);
+      background: #000000;
     }
 
     .btn-danger {
-      background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
+      background: #ff3b30;
       color: white;
-      box-shadow: 0 2px 4px rgba(239, 68, 68, 0.25);
     }
 
     .btn-danger:hover {
-      background: linear-gradient(135deg, #dc2626 0%, #b91c1c 100%);
-      box-shadow: 0 3px 6px rgba(239, 68, 68, 0.35);
+      background: #d63027;
+    }
+
+    /* Stop button should be smaller/less prominent */
+    .activate-section .btn-danger {
+      background: rgba(255, 59, 48, 0.12);
+      color: #ff3b30;
+      border: 1px solid rgba(255, 59, 48, 0.3);
+    }
+
+    .activate-section .btn-danger:hover {
+      background: rgba(255, 59, 48, 0.2);
     }
 
     .btn-outline {
       background-color: transparent;
-      border: 1.5px solid #e5e7eb;
-      color: #4b5563;
+      border: 1px solid #d2d2d7;
+      color: #515154;
     }
 
     .btn-outline:hover {
-      background-color: #f3f4f6;
-      border-color: #d1d5db;
+      background-color: #e8e8ed;
+      border-color: #aeaeb2;
     }
 
     .btn-lg {
-      padding: 12px 20px;
-      font-size: 14px;
+      padding: 11px 18px;
+      font-size: 13px;
     }
 
     .btn:disabled {
-      opacity: 0.5;
+      opacity: 0.4;
       cursor: not-allowed;
-      transform: none !important;
-      box-shadow: none !important;
     }
 
     .btn:active:not(:disabled) {
-      transform: translateY(0);
+      opacity: 0.8;
     }
 
     /* Logged in view */
@@ -327,24 +332,23 @@
 
     .user-info {
       background: white;
-      padding: 10px 14px;
-      border-radius: 8px;
-      margin-bottom: 12px;
+      padding: 12px 14px;
+      border-radius: 10px;
+      margin-bottom: 14px;
       display: flex;
       justify-content: space-between;
       align-items: center;
-      box-shadow: 0 1px 3px rgba(0,0,0,0.08);
     }
 
     .user-info .username {
       font-weight: 500;
-      font-size: 14px;
-      color: #212529;
+      font-size: 13px;
+      color: #1d1d1f;
     }
 
     .user-info .btn {
       flex: none;
-      padding: 5px 10px;
+      padding: 6px 12px;
       font-size: 11px;
     }
 
@@ -354,91 +358,22 @@
     }
 
     .activate-section .btn {
-      font-weight: 600;
-      letter-spacing: 0.3px;
-    }
-
-    /* Mode selection */
-    .mode-section {
-      background: white;
-      padding: 12px;
-      border-radius: 8px;
-      box-shadow: 0 1px 3px rgba(0,0,0,0.1);
-      margin-bottom: 12px;
-    }
-
-    .mode-section h3 {
-      font-size: 12px;
-      font-weight: 600;
-      color: #495057;
-      margin-bottom: 10px;
-      text-transform: uppercase;
-      letter-spacing: 0.3px;
-    }
-
-    .mode-buttons {
-      display: flex;
-      gap: 8px;
-    }
-
-    .mode-btn {
-      flex: 1;
-      display: flex;
-      align-items: center;
-      padding: 10px 12px;
-      border: 1.5px solid #dee2e6;
-      border-radius: 8px;
-      background: white;
-      cursor: pointer;
-      transition: all 0.15s;
-      text-align: left;
-    }
-
-    .mode-btn:hover {
-      border-color: #0066cc;
-      background: #f8f9ff;
-    }
-
-    .mode-btn.active {
-      border-color: #0066cc;
-      background: #e7f1ff;
-    }
-
-    .mode-btn .mode-icon {
-      width: 24px;
-      height: 24px;
-      border-radius: 4px;
-      margin-right: 10px;
-      flex-shrink: 0;
-    }
-
-    .mode-btn .mode-info h4 {
-      font-size: 12px;
       font-weight: 500;
-      color: #212529;
-      margin-bottom: 1px;
+      letter-spacing: 0;
     }
 
-    .mode-btn .mode-info p {
-      font-size: 10px;
-      color: #6c757d;
-      margin: 0;
-    }
-
-    #mode1 .mode-icon {
-      background: linear-gradient(135deg, #4dabf7, #e7f1ff);
-    }
-
-    #mode2 .mode-icon {
-      background: linear-gradient(135deg, #ffc078, #ffe8cc);
+    .activate-section .btn-lg {
+      padding: 10px 16px;
+      font-size: 13px;
+      border-radius: 8px;
     }
 
     /* Messages */
     #signInMessage {
       margin-top: 12px;
-      padding: 8px 12px;
-      border-radius: 4px;
-      font-size: 13px;
+      padding: 10px 12px;
+      border-radius: 8px;
+      font-size: 12px;
       text-align: center;
     }
 
@@ -447,51 +382,53 @@
     }
 
     #signInMessage.error {
-      background-color: #f8d7da;
-      color: #721c24;
+      background-color: rgba(255, 59, 48, 0.1);
+      color: #c93b33;
     }
 
     #signInMessage.success {
-      background-color: #d4edda;
-      color: #155724;
+      background-color: rgba(52, 199, 89, 0.12);
+      color: #1d7a3a;
     }
 
     /* Instructions */
     .instructions {
-      padding: 10px 12px;
-      background: linear-gradient(135deg, #e7f1ff 0%, #f0f7ff 100%);
-      border-radius: 6px;
+      padding: 14px;
+      background: #e8e8ed;
+      border-radius: 10px;
       font-size: 11px;
-      color: #0066cc;
-      margin-bottom: 12px;
-      border-left: 3px solid #0066cc;
+      color: #515154;
+      margin-bottom: 14px;
+      border-left: none;
     }
 
     .instructions strong {
-      font-size: 12px;
+      font-size: 11px;
+      color: #1d1d1f;
     }
 
     .instructions ol {
-      margin: 6px 0 0 16px;
+      margin: 8px 0 0 16px;
       padding: 0;
     }
 
     .instructions li {
-      margin-bottom: 2px;
+      margin-bottom: 4px;
+      line-height: 1.5;
     }
 
     /* Footer actions */
     .footer-actions {
       display: flex;
       gap: 8px;
-      padding-top: 12px;
-      margin-top: 8px;
-      border-top: 1px solid #dee2e6;
+      padding-top: 14px;
+      margin-top: 10px;
+      border-top: 1px solid #d2d2d7;
     }
 
     .footer-actions .btn {
       font-size: 11px;
-      padding: 6px 10px;
+      padding: 8px 12px;
     }
 
     /* Main content area */
@@ -500,14 +437,13 @@
     }
 
     /* Smooth transitions */
-    .btn, .mode-btn, input {
+    .btn, input {
       transition: all 0.15s ease;
     }
 
     /* Better focus states */
-    .btn:focus, .mode-btn:focus {
+    .btn:focus {
       outline: none;
-      box-shadow: 0 0 0 3px rgba(0, 102, 204, 0.25);
     }
   </style>
 </head>
@@ -515,7 +451,7 @@
 <body>
   <div id="mainPopup">
     <div class="header">
-      <h1>GARB Eye Tracker</h1>
+      <h1>GARB</h1>
       <div class="subtitle">Gaze-Aware Reading Browser</div>
     </div>
 
@@ -554,8 +490,8 @@
           <label for="consentCheckbox">I have read and understood the above information. I voluntarily agree to participate in this research study.</label>
         </div>
 
-        <button id="giveConsentBtn" class="btn btn-success btn-lg" style="width: 100%;" disabled>
-          I Agree - Start Participating
+        <button id="giveConsentBtn" class="btn btn-primary btn-lg" style="width: 100%;" disabled>
+          Agree and Continue
         </button>
       </div>
     </div>
@@ -596,43 +532,25 @@
         </div>
 
         <div class="activate-section">
-          <button id="extActivateButton" class="btn btn-success btn-lg" style="width: 100%;">
-            Activate Eye Tracking
+          <button id="extActivateButton" class="btn btn-primary btn-lg" style="width: 100%;">
+            Start Tracking
           </button>
         </div>
 
-        <div class="mode-section">
-          <h3>Visualization Mode</h3>
-          <div class="mode-buttons">
-            <button id="mode1" class="mode-btn active">
-              <div class="mode-icon"></div>
-              <div class="mode-info">
-                <h4>Simple Highlighting</h4>
-                <p>Blue gradient shows reading progress</p>
-              </div>
-            </button>
-            <button id="mode2" class="mode-btn">
-              <div class="mode-icon"></div>
-              <div class="mode-info">
-                <h4>Comparison Mode</h4>
-                <p>Compare your reading to average patterns</p>
-              </div>
-            </button>
-          </div>
-        </div>
-
         <div class="instructions">
-          <strong>How to use:</strong>
+          <strong>How to use</strong>
           <ol>
             <li>Navigate to an article you want to read</li>
-            <li>Click "Activate Eye Tracking"</li>
-            <li>Read normally - lines will highlight as you read</li>
+            <li>Click Start Tracking</li>
+            <li>Read normally - your position will be highlighted</li>
+            <li>Use the settings icon to adjust preferences</li>
           </ol>
         </div>
 
         <div class="footer-actions">
-          <button id="exportDataBtn" class="btn btn-outline">Export My Data</button>
-          <button id="revokeConsentBtn" class="btn btn-outline">Revoke Consent</button>
+          <button id="completeSurveyBtn" class="btn btn-primary" style="flex: 1.5;">Complete Survey</button>
+          <button id="exportDataBtn" class="btn btn-outline">Export Data</button>
+          <button id="revokeConsentBtn" class="btn btn-outline">Revoke</button>
         </div>
       </div>
     </div>

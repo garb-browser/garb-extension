@@ -22,15 +22,59 @@
     let wordsRead = 0;
     let autoScrollEnabled = false;
 
+    // ========================================
+    // TRACKING MODE CONTROL (Research Conditions)
+    // ========================================
+    // Mode A: 'gaze' - Eye tracker drives highlight (experimental condition)
+    // Mode B: 'baseline' - Viewport center drives highlight (control condition)
+    // Mode C: 'none' - No highlighting (baseline condition)
+    const TRACKING_MODES = {
+        GAZE: 'gaze',
+        BASELINE: 'baseline',
+        NONE: 'none'
+    };
+    let currentTrackingMode = null; // Default to null - user must explicitly select a mode
+    let baselineUpdateInterval = null;
+    const BASELINE_UPDATE_RATE_MS = 100; // Update baseline highlight every 100ms (smoother)
+
+    // ========================================
+    // PACE-BASED BASELINE MODE (WPM-driven)
+    // ========================================
+    let baselineWPM = 200; // Comfortable reading rate (reduced from 238 for smoother experience)
+    let baselineWordIndex = 0; // Current global word position
+    let baselineStartTime = 0; // When reading started
+    let baselinePausedDuration = 0; // Total time spent paused
+    let baselinePauseStartTime = 0; // When current pause started
+    let baselineWordMap = []; // Flat array: [{line, wordIdx, element}, ...]
+    let baselineTotalWords = 0;
+    let baselineInitialized = false;
+
+    // ========================================
+    // PAUSE/LOCK STATE
+    // ========================================
+    let isPaused = false;
+    let pauseReason = null; // 'manual', 'tracking_lost'
+    const TRACKING_LOST_THRESHOLD_MS = 500; // Unified threshold for pause + visual indicator
+
     // Stabilization for smooth tracking
     let lastStableLineNum = -1;
     let lastStableWordIdx = -1;
     let stabilityCounter = 0;
     const STABILITY_THRESHOLD = 4; // Gaze samples needed before changing position (increased)
     let lastScrollTime = 0;
-    const SCROLL_COOLDOWN = 600; // ms between auto-scrolls (reduced for smoother scrolling)
-    let targetScrollY = 0; // For smooth interpolated scrolling
-    let scrollAnimationFrame = null;
+    const SCROLL_COOLDOWN_GAZE = 1500; // ms between auto-scrolls for Mode A (increased for less jitter)
+    const SCROLL_COOLDOWN_BASELINE = 1500; // ms between auto-scrolls for Mode B (increased for less jitter)
+    let autoScrollInitialized = false; // Prevents auto-scroll during page load grace period
+
+    // Research-based scroll parameters (based on Kumar & Winograd, Sharmin et al.)
+    // Preferred Reading Zone: users read in comfortable middle region of viewport
+    // Tuned for less responsive/jittery UX - only trigger when clearly at edges
+    const SCROLL_ZONE_TOP = 0.18;     // Scroll up only when gaze near very top (18% from top)
+    const SCROLL_ZONE_BOTTOM = 0.78;  // Scroll down only when gaze near very bottom (78% from top)
+    const SCROLL_DWELL_TIME = 700;    // ms gaze must stay in trigger zone before scroll (longer = less sensitive)
+    const SCROLL_DURATION_MS = 900;   // Duration for smooth scroll animation (slower = smoother)
+    let scrollTriggerStartTime = 0;   // When gaze first entered scroll trigger zone (down)
+    let scrollUpTriggerStartTime = 0; // When gaze first entered scroll trigger zone (up)
 
     // Current indicator stabilization (separate from reading progress)
     let displayedCurrentLine = -1;
@@ -47,6 +91,528 @@
     let gazeBubbleAnimationFrame = null;
     const GAZE_BUBBLE_LERP_SPEED = 0.06; // Main bubble speed (slower = smoother flow)
     const GAZE_BUBBLE_TRAIL_SPEED = 0.03; // Trail follows even slower for visual trail
+
+    // ========================================
+    // RESEARCH DATA LOGGING & ENHANCED GAZE PROCESSING
+    // ========================================
+
+    /**
+     * Enhanced gaze state - centralized state management for all gaze tracking
+     */
+    const gazeState = {
+        // EMA Smoothing
+        ema: { x: null, y: null },
+        emaAlpha: 0.3,
+
+        // Velocity & Saccade Detection
+        velocity: { x: 0, y: 0, magnitude: 0 },
+        velocityHistory: [],
+        saccadeThreshold: 800, // px/sec
+        saccadeActive: false,
+        saccadeFreezeStartTime: 0,
+        saccadeFreezeMinDuration: 50, // ms
+
+        // Confidence Tracking
+        confidence: 1.0,
+        confidenceHistory: [],
+        lowConfidenceThreshold: 0.4,
+        trackingLostThreshold: 0.2,
+        trackingLost: false,
+        lastValidGazeTime: 0,
+        trackingLostDuration: 2000, // ms before showing "tracking lost"
+
+        // Line Lock with Hysteresis
+        candidateLine: -1,
+        candidateLineStartTime: 0,
+        candidateLineCount: 0,
+        lineLockDurationMs: 250,
+        lineMarginThreshold: 40, // px
+        currentLockedLine: -1,
+
+        // Manual nudge lock (prevents gaze override after nudge)
+        nudgeLockUntil: 0,
+        nudgeLockDuration: 800, // ms to lock after nudge
+
+        // Raw sample history
+        rawHistory: [],
+        maxHistorySize: 15,
+        maxHistoryAgeMs: 300,
+
+        // Line geometry cache
+        lineRects: [],
+        lineRectsCacheTime: 0,
+        lineRectsCacheDuration: 1000,
+
+        // Resume marker
+        lastStablePosition: { line: -1, word: -1 },
+
+        // Tracking lost timer
+        lastGazeReceivedTime: 0,
+        trackingLostCheckInterval: null,
+    };
+
+    /**
+     * DataLogger - Comprehensive event logging for research
+     */
+    class DataLogger {
+        constructor() {
+            this.gazeEvents = [];
+            this.uiEvents = [];
+            this.sessionId = null;
+            this.startTime = Date.now();
+
+            // Fixation detection state
+            this.currentFixation = null;
+            this.fixationId = 0;
+            this.lastGaze = null;
+            this.lastTimestamp = 0;
+
+            // Saccade amplitude tracking
+            this.saccadeStartX = 0;
+            this.saccadeStartY = 0;
+            this.wasSaccade = false;
+
+            // Data quality tracking
+            this.expectedSamples = 0;       // Based on elapsed time × 60Hz
+            this.actualSamples = 0;         // Samples actually received
+            this.nominalSamplingRate = 60;  // Hz (Tobii Eye Tracker 5)
+
+            // Precision tracking (RMS of gaze variance)
+            this.gazeVarianceWindow = [];   // Last 10 samples for rolling precision
+            this.gazeVarianceWindowSize = 10;
+            this.precisionSumSquared = 0;
+            this.precisionSampleCount = 0;
+
+            // Blink detection (data gap method)
+            this.lastSampleTime = 0;
+            this.blinkCount = 0;            // Gaps 100-500ms = likely blink
+            this.dataGapCount = 0;          // Gaps > 500ms = tracking loss
+
+            // Summary metrics
+            this.summary = {
+                total_gaze_samples: 0,
+                total_fixations: 0,
+                fixation_durations: [],
+                total_saccades: 0,
+                saccade_speeds: [],
+                saccade_amplitudes: [],     // Distance in pixels for each saccade
+                total_lines_read: 0,
+                total_words_read: 0,
+                time_on_text_ms: 0,
+                time_off_text_ms: 0,
+                tracking_lost_count: 0,
+                line_switch_count: 0,
+                scroll_count: 0,
+                manual_nudge_count: 0,
+                // Regression tracking
+                regression_count: 0,
+                total_regression_lines: 0,
+            };
+
+            // Time tracking
+            this.lastOnTextTime = null;
+            this.isOnText = false;
+
+            // Ring buffer for gaze events (limit memory usage)
+            // Reduced to prevent 413 Payload Too Large errors
+            this.maxGazeEvents = 5000; // ~83 seconds at 60Hz
+        }
+
+        /**
+         * Log a gaze event with fixation detection and data quality tracking
+         */
+        logGaze(x, y, confidence, velocity) {
+            const now = Date.now();
+            this.summary.total_gaze_samples++;
+            this.actualSamples++;
+
+            // === Data Quality: Sample rate and data loss tracking ===
+            const elapsedSeconds = (now - this.startTime) / 1000;
+            this.expectedSamples = Math.floor(elapsedSeconds * this.nominalSamplingRate);
+
+            // === Data Quality: Blink and gap detection via time gaps ===
+            if (this.lastSampleTime > 0) {
+                const gapMs = now - this.lastSampleTime;
+                if (gapMs >= 100 && gapMs < 500) {
+                    // Likely a blink (100-500ms gap)
+                    this.blinkCount++;
+                } else if (gapMs >= 500) {
+                    // Significant data gap (tracking loss, not blink)
+                    this.dataGapCount++;
+                }
+            }
+            this.lastSampleTime = now;
+
+            // === Data Quality: Precision (RMS of gaze variance) ===
+            // Track variance within rolling window during fixations
+            if (velocity.magnitude < 30) { // Only during fixations
+                this.gazeVarianceWindow.push({ x, y });
+                if (this.gazeVarianceWindow.length > this.gazeVarianceWindowSize) {
+                    this.gazeVarianceWindow.shift();
+                }
+
+                // Calculate variance if we have enough samples
+                if (this.gazeVarianceWindow.length >= 3) {
+                    const meanX = this.gazeVarianceWindow.reduce((s, p) => s + p.x, 0) / this.gazeVarianceWindow.length;
+                    const meanY = this.gazeVarianceWindow.reduce((s, p) => s + p.y, 0) / this.gazeVarianceWindow.length;
+
+                    // Calculate squared error from mean (for RMS)
+                    const sumSquaredError = this.gazeVarianceWindow.reduce((s, p) => {
+                        return s + Math.pow(p.x - meanX, 2) + Math.pow(p.y - meanY, 2);
+                    }, 0);
+
+                    this.precisionSumSquared += sumSquaredError / this.gazeVarianceWindow.length;
+                    this.precisionSampleCount++;
+                }
+            }
+
+            // Build gaze event
+            const event = {
+                ts: now,
+                gx: Math.round(x * 10) / 10,
+                gy: Math.round(y * 10) / 10,
+                conf: Math.round(confidence * 100) / 100,
+            };
+
+            // Fixation detection (I-VT algorithm)
+            const FIXATION_VELOCITY_THRESHOLD = 30; // px/sample
+            const FIXATION_MIN_DURATION_MS = 100;
+
+            const isSaccade = velocity.magnitude >= FIXATION_VELOCITY_THRESHOLD;
+
+            if (!isSaccade) {
+                // Within fixation
+                if (!this.currentFixation) {
+                    this.fixationId++;
+                    this.currentFixation = {
+                        id: this.fixationId,
+                        startTime: now,
+                    };
+                }
+
+                const duration = now - this.currentFixation.startTime;
+                if (duration >= FIXATION_MIN_DURATION_MS) {
+                    event.fix_id = this.currentFixation.id;
+                    event.fix_dur = duration;
+                }
+
+                // Track saccade end (transition from saccade to fixation)
+                if (this.wasSaccade) {
+                    // Saccade just ended - calculate amplitude
+                    const saccadeAmplitude = Math.sqrt(
+                        Math.pow(x - this.saccadeStartX, 2) +
+                        Math.pow(y - this.saccadeStartY, 2)
+                    );
+                    this.summary.saccade_amplitudes.push(Math.round(saccadeAmplitude));
+                    event.sac_amp = Math.round(saccadeAmplitude);
+                }
+            } else {
+                // Saccade detected
+                // Track saccade start position
+                if (!this.wasSaccade) {
+                    this.saccadeStartX = this.lastGaze ? this.lastGaze.x : x;
+                    this.saccadeStartY = this.lastGaze ? this.lastGaze.y : y;
+                }
+
+                if (this.currentFixation) {
+                    const duration = now - this.currentFixation.startTime;
+                    if (duration >= FIXATION_MIN_DURATION_MS) {
+                        this.summary.total_fixations++;
+                        this.summary.fixation_durations.push(duration);
+                    }
+                    this.summary.total_saccades++;
+                    this.summary.saccade_speeds.push(velocity.magnitude);
+                    event.sac_spd = Math.round(velocity.magnitude);
+                }
+                this.currentFixation = null;
+            }
+
+            // Track state for next iteration
+            this.wasSaccade = isSaccade;
+            this.lastGaze = { x, y };
+
+            // Add to buffer (ring buffer behavior)
+            this.gazeEvents.push(event);
+            if (this.gazeEvents.length > this.maxGazeEvents) {
+                this.gazeEvents.shift();
+            }
+        }
+
+        /**
+         * Log a UI event
+         */
+        logUIEvent(type, data = {}) {
+            const event = {
+                ts: Date.now(),
+                type: type,
+                ...data
+            };
+            this.uiEvents.push(event);
+
+            // Update summary metrics
+            switch (type) {
+                case 'line_switch':
+                    this.summary.line_switch_count++;
+                    break;
+                case 'tracking_lost':
+                    this.summary.tracking_lost_count++;
+                    break;
+                case 'scroll':
+                    this.summary.scroll_count++;
+                    break;
+                case 'manual_nudge':
+                    this.summary.manual_nudge_count++;
+                    break;
+                case 'regression':
+                    this.summary.regression_count++;
+                    if (data.lines_back) {
+                        this.summary.total_regression_lines += data.lines_back;
+                    }
+                    break;
+            }
+        }
+
+        /**
+         * Update time on/off text tracking
+         */
+        updateTextPresence(isOnText) {
+            const now = Date.now();
+
+            if (this.lastOnTextTime === null) {
+                this.lastOnTextTime = now;
+                this.isOnText = isOnText;
+                return;
+            }
+
+            const elapsed = now - this.lastOnTextTime;
+
+            if (this.isOnText) {
+                this.summary.time_on_text_ms += elapsed;
+            } else {
+                this.summary.time_off_text_ms += elapsed;
+            }
+
+            this.lastOnTextTime = now;
+            this.isOnText = isOnText;
+        }
+
+        /**
+         * Convert gaze events to JSONL format
+         * Uses compact format to reduce payload size
+         */
+        gazeToJSONL() {
+            // Use compact CSV-style format: ts,gx,gy,conf[,fix_id,fix_dur][,sac_spd,sac_amp]
+            // Header line indicates format version
+            const header = 'v2:ts,gx,gy,conf,fix_id,fix_dur,sac_spd,sac_amp';
+            const lines = this.gazeEvents.map(e => {
+                // Use relative timestamp (ms from session start) to save bytes
+                const relTs = e.ts - this.startTime;
+                return `${relTs},${e.gx},${e.gy},${e.conf},${e.fix_id||''},${e.fix_dur||''},${e.sac_spd||''},${e.sac_amp||''}`;
+            });
+            return header + '\n' + lines.join('\n');
+        }
+
+        /**
+         * Convert gaze events to JSONL format (legacy full format)
+         */
+        gazeToJSONLFull() {
+            return this.gazeEvents.map(e => JSON.stringify(e)).join('\n');
+        }
+
+        /**
+         * Convert UI events to JSONL format
+         */
+        uiToJSONL() {
+            return this.uiEvents.map(e => JSON.stringify(e)).join('\n');
+        }
+
+        /**
+         * Estimate payload size and return size-safe data
+         * If data is too large, sample it down
+         */
+        getSizeSafeGazeData(maxSizeBytes = 500000) {
+            let data = this.gazeToJSONL();
+
+            // If within limit, return as-is
+            if (data.length <= maxSizeBytes) {
+                return { data, sampled: false, originalCount: this.gazeEvents.length };
+            }
+
+            // Data too large - sample every Nth event
+            const samplingRatio = Math.ceil(data.length / maxSizeBytes);
+            const sampledEvents = this.gazeEvents.filter((_, i) => i % samplingRatio === 0);
+
+            const header = `v2:ts,gx,gy,conf,fix_id,fix_dur,sac_spd,sac_amp (sampled 1:${samplingRatio})`;
+            const lines = sampledEvents.map(e => {
+                const relTs = e.ts - this.startTime;
+                return `${relTs},${e.gx},${e.gy},${e.conf},${e.fix_id||''},${e.fix_dur||''},${e.sac_spd||''},${e.sac_amp||''}`;
+            });
+
+            console.log(`GARB: Gaze data sampled 1:${samplingRatio} (${this.gazeEvents.length} -> ${sampledEvents.length} events)`);
+
+            return {
+                data: header + '\n' + lines.join('\n'),
+                sampled: true,
+                samplingRatio,
+                originalCount: this.gazeEvents.length,
+                sampledCount: sampledEvents.length
+            };
+        }
+
+        /**
+         * Get computed summary metrics including data quality
+         */
+        getSummary() {
+            const sessionDuration = Date.now() - this.startTime;
+            const fixDurations = this.summary.fixation_durations;
+            const sacSpeeds = this.summary.saccade_speeds;
+            const sacAmplitudes = this.summary.saccade_amplitudes;
+
+            // Calculate data loss ratio
+            const dataLossRatio = this.expectedSamples > 0
+                ? Math.round((1 - (this.actualSamples / this.expectedSamples)) * 1000) / 1000
+                : 0;
+
+            // Calculate precision RMS (root mean square of gaze variance)
+            const precisionRMS = this.precisionSampleCount > 0
+                ? Math.round(Math.sqrt(this.precisionSumSquared / this.precisionSampleCount) * 10) / 10
+                : 0;
+
+            // Calculate actual sampling rate achieved
+            const sessionSeconds = sessionDuration / 1000;
+            const actualSamplingRate = sessionSeconds > 0
+                ? Math.round((this.actualSamples / sessionSeconds) * 10) / 10
+                : 0;
+
+            // Calculate average regression distance
+            const avgRegressionDistance = this.summary.regression_count > 0
+                ? Math.round((this.summary.total_regression_lines / this.summary.regression_count) * 10) / 10
+                : 0;
+
+            return {
+                // Core metrics
+                total_gaze_samples: this.summary.total_gaze_samples,
+                total_fixations: this.summary.total_fixations,
+                avg_fixation_duration_ms: fixDurations.length > 0
+                    ? Math.round(fixDurations.reduce((a, b) => a + b, 0) / fixDurations.length)
+                    : 0,
+                total_saccades: this.summary.total_saccades,
+                avg_saccade_speed: sacSpeeds.length > 0
+                    ? Math.round(sacSpeeds.reduce((a, b) => a + b, 0) / sacSpeeds.length)
+                    : 0,
+                avg_saccade_amplitude_px: sacAmplitudes.length > 0
+                    ? Math.round(sacAmplitudes.reduce((a, b) => a + b, 0) / sacAmplitudes.length)
+                    : 0,
+
+                // Reading metrics
+                total_lines_read: this.summary.total_lines_read,
+                total_words_read: this.summary.total_words_read,
+                reading_speed_wpm: sessionDuration > 0
+                    ? Math.round((this.summary.total_words_read / sessionDuration) * 60000)
+                    : 0,
+                time_on_text_ms: this.summary.time_on_text_ms,
+                time_off_text_ms: this.summary.time_off_text_ms,
+
+                // Event counts
+                tracking_lost_count: this.summary.tracking_lost_count,
+                line_switch_count: this.summary.line_switch_count,
+                scroll_count: this.summary.scroll_count,
+                manual_nudge_count: this.summary.manual_nudge_count,
+
+                // Data quality metrics (for research paper)
+                data_quality: {
+                    data_loss_ratio: Math.max(0, dataLossRatio), // Clamp to >= 0
+                    precision_rms_px: precisionRMS,
+                    blink_count: this.blinkCount,
+                    data_gap_count: this.dataGapCount,
+                    sampling_rate_nominal_hz: this.nominalSamplingRate,
+                    sampling_rate_actual_hz: actualSamplingRate,
+                    expected_samples: this.expectedSamples,
+                    actual_samples: this.actualSamples,
+                },
+
+                // Regression metrics
+                regressions: {
+                    count: this.summary.regression_count,
+                    total_lines: this.summary.total_regression_lines,
+                    avg_distance: avgRegressionDistance,
+                },
+            };
+        }
+
+        /**
+         * Get settings snapshot
+         */
+        getSettingsSnapshot() {
+            return {
+                sensitivity: STABILITY_THRESHOLD,
+                lock_time_ms: gazeState.lineLockDurationMs,
+                highlight_opacity: 0.25, // TODO: make configurable
+                auto_scroll: autoScrollEnabled,
+                theme: localStorage.getItem('garb-theme') || 'gray',
+                font: localStorage.getItem('garb-font') || 'serif',
+                font_size: localStorage.getItem('garb-size') || 'medium',
+                gaze_y_offset: GAZE_Y_OFFSET,
+                gaze_x_offset: GAZE_X_OFFSET,
+            };
+        }
+
+        /**
+         * Get device and environment metadata for research paper reporting
+         */
+        getDeviceMetadata() {
+            return {
+                // Screen info
+                screen_width: window.screen.width,
+                screen_height: window.screen.height,
+                screen_color_depth: window.screen.colorDepth,
+                device_pixel_ratio: window.devicePixelRatio,
+
+                // Viewport info
+                viewport_width: window.innerWidth,
+                viewport_height: window.innerHeight,
+
+                // Browser info
+                user_agent: navigator.userAgent,
+                platform: navigator.platform,
+
+                // Eye tracker info
+                eye_tracker_model: "Tobii Eye Tracker 5",
+                nominal_sampling_rate: 60, // Hz
+
+                // Calibration (Tobii native calibration)
+                calibration_method: "Tobii native 9-point",
+            };
+        }
+
+        /**
+         * Get processing method documentation for research paper
+         */
+        getProcessingMethods() {
+            return {
+                smoothing: "EMA (alpha=0.3, adaptive based on velocity)",
+                fixation_detection: "I-VT (velocity threshold 30px/sample, min duration 100ms)",
+                saccade_detection: "Velocity threshold (800px/sec, 50ms freeze period)",
+                line_lock: "Hysteresis (time=" + gazeState.lineLockDurationMs + "ms, margin=" + gazeState.lineMarginThreshold + "px)",
+                aoi_definition: "DOM line bounding boxes from .garb-line elements",
+                confidence_calculation: "Velocity + spatial consistency based (0-1 scale)",
+                tracking_lost_threshold: gazeState.trackingLostDuration + "ms without valid gaze on text",
+                blink_detection: "Data gaps 100-500ms classified as blinks",
+            };
+        }
+    }
+
+    // Global data logger instance
+    let dataLogger = null;
+
+    /**
+     * Initialize data logger for a session
+     */
+    function initDataLogger() {
+        dataLogger = new DataLogger();
+        dataLogger.startTime = Date.now();
+        console.log("GARB DataLogger initialized");
+    }
 
     // Helper function to safely send messages to the extension
     function safeSendMessage(message, callback) {
@@ -96,7 +662,28 @@
                     originalPageURL = location.href;
 
                     isActivated = true;
-                    runInjection();
+
+                    // Use mode from activation message if provided
+                    // Check for explicit mode value (including null which means "no mode selected")
+                    if ('mode' in request) {
+                        const mode = request.mode;
+                        if (mode === TRACKING_MODES.GAZE ||
+                            mode === TRACKING_MODES.BASELINE ||
+                            mode === TRACKING_MODES.NONE) {
+                            currentTrackingMode = mode;
+                            console.log("GARB: Starting with mode from activation:", mode);
+                        } else {
+                            // Mode is null or invalid - user must select a mode
+                            currentTrackingMode = null;
+                            console.log("GARB: Starting with no mode selected - user must choose");
+                        }
+                        runInjection();
+                    } else {
+                        // No mode in request - start with no mode (user must select)
+                        currentTrackingMode = null;
+                        console.log("GARB: No mode provided - user must select a mode");
+                        runInjection();
+                    }
                     sendResponse({ success: true });
                 }
 
@@ -110,10 +697,47 @@
                     sendResponse({ isActivated: isActivated });
                 }
 
-                // Handle mode switching
+                // Handle mode switching (3 modes: gaze, baseline, none)
                 if (request.switchMode && isActivated) {
                     console.log("Mode switched to:", request.switchMode);
                     window.eyeTrackingViewMode = request.switchMode;
+
+                    // Accept both string modes and numeric modes for backwards compatibility
+                    let mode = request.switchMode;
+
+                    // If string mode, validate it
+                    if (typeof mode === 'string') {
+                        if (mode === TRACKING_MODES.GAZE ||
+                            mode === TRACKING_MODES.BASELINE ||
+                            mode === TRACKING_MODES.NONE) {
+                            // Valid string mode, use as-is
+                        } else if (mode === '1') {
+                            mode = TRACKING_MODES.GAZE;
+                        } else if (mode === '2') {
+                            mode = TRACKING_MODES.BASELINE;
+                        } else if (mode === '3') {
+                            mode = TRACKING_MODES.NONE;
+                        } else {
+                            // Unknown mode, default to gaze
+                            console.warn("Unknown mode:", mode, "defaulting to gaze");
+                            mode = TRACKING_MODES.GAZE;
+                        }
+                    } else if (typeof mode === 'number') {
+                        // Numeric mode mapping: 1 = gaze, 2 = baseline, 3 = none
+                        if (mode === 1) mode = TRACKING_MODES.GAZE;
+                        else if (mode === 2) mode = TRACKING_MODES.BASELINE;
+                        else if (mode === 3) mode = TRACKING_MODES.NONE;
+                        else mode = TRACKING_MODES.GAZE;
+                    }
+
+                    setTrackingMode(mode);
+                    sendResponse({ success: true, mode: mode });
+                }
+
+                // Handle settings changes
+                if (request.action === "settingsChanged" && isActivated) {
+                    loadSettings();
+                    sendResponse({ success: true });
                 }
             } catch (error) {
                 if (error.message && error.message.includes('Extension context invalidated')) {
@@ -141,6 +765,19 @@
         }
 
         isActivated = false;
+
+        // Stop baseline mode interval if running
+        if (baselineUpdateInterval) {
+            clearInterval(baselineUpdateInterval);
+            baselineUpdateInterval = null;
+        }
+
+        // Reset tracking mode to none (user must select again)
+        currentTrackingMode = TRACKING_MODES.NONE;
+
+        // Reset pause state
+        isPaused = false;
+        pauseReason = null;
 
         // Stop gaze bubble animation and clean up
         if (gazeBubbleAnimationFrame) {
@@ -204,7 +841,7 @@
         statusIndicator.innerHTML = `
             <span class="garb-status-dot"></span>
             <span class="garb-status-text">${text}</span>
-            <button class="garb-settings-toggle" id="garb-settings-toggle" title="Reader Settings">Aa</button>
+            <button class="garb-settings-toggle" id="garb-settings-toggle" title="Reader Settings"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M12 1v4M12 19v4M4.22 4.22l2.83 2.83M16.95 16.95l2.83 2.83M1 12h4M19 12h4M4.22 19.78l2.83-2.83M16.95 7.05l2.83-2.83"/></svg></button>
             <button class="garb-deactivate-btn" title="Stop tracking">✕</button>
         `;
         document.body.appendChild(statusIndicator);
@@ -458,15 +1095,24 @@
      * Initialize settings toolbar functionality
      */
     function initializeSettings() {
-        const SIZE_CLASSES = ['size-small', 'size-medium'];
+        const SIZE_CLASSES = ['size-xs', 'size-small', 'size-medium'];
         const panel = document.getElementById('garb-settings-panel');
 
-        // Close panel when clicking outside
+        // Close panel when clicking anywhere outside (use window + capture for full coverage)
         if (panel) {
-            document.addEventListener('click', (e) => {
+            window.addEventListener('click', (e) => {
                 const toggleBtn = document.getElementById('garb-settings-toggle');
                 if (!panel.contains(e.target) && e.target !== toggleBtn && !e.target.closest('.garb-settings-toggle')) {
                     panel.classList.remove('visible');
+                    if (toggleBtn) toggleBtn.classList.remove('active');
+                }
+            }, true); // Use capture phase to catch all clicks
+
+            // Also close on Escape key
+            window.addEventListener('keydown', (e) => {
+                if (e.key === 'Escape' && panel.classList.contains('visible')) {
+                    panel.classList.remove('visible');
+                    const toggleBtn = document.getElementById('garb-settings-toggle');
                     if (toggleBtn) toggleBtn.classList.remove('active');
                 }
             });
@@ -535,6 +1181,28 @@
             });
         });
 
+        // Mode buttons (in-page mode switching)
+        document.querySelectorAll('.garb-mode-btn-compact').forEach(btn => {
+            btn.addEventListener('click', () => {
+                const mode = btn.dataset.mode;
+                console.log("GARB: In-page mode button clicked:", mode);
+
+                // Update UI immediately
+                document.querySelectorAll('.garb-mode-btn-compact').forEach(b => b.classList.remove('active'));
+                btn.classList.add('active');
+
+                // Call setTrackingMode directly (immediate effect)
+                setTrackingMode(mode);
+
+                // Save to storage for persistence
+                try {
+                    chrome.storage.local.set({ trackingMode: mode });
+                } catch (e) {
+                    console.log("Could not save mode to storage:", e);
+                }
+            });
+        });
+
         // Auto-scroll toggle
         const autoscrollCheckbox = document.getElementById('garb-autoscroll-checkbox');
         if (autoscrollCheckbox) {
@@ -543,6 +1211,45 @@
                 try {
                     localStorage.setItem('garb-autoscroll', autoScrollEnabled ? 'true' : 'false');
                 } catch (e) {}
+                // Show visual feedback
+                showAutoScrollFeedback(autoScrollEnabled);
+            });
+        }
+
+        // Clear progress button
+        const clearProgressBtn = document.getElementById('garb-clear-progress');
+        if (clearProgressBtn) {
+            clearProgressBtn.addEventListener('click', () => {
+                clearReadingProgress();
+            });
+        }
+
+        // Zoom slider
+        const zoomSlider = document.getElementById('garb-zoom-slider');
+        const zoomValue = document.getElementById('garb-zoom-value');
+        const zoomReset = document.getElementById('garb-zoom-reset');
+
+        if (zoomSlider) {
+            zoomSlider.addEventListener('input', function() {
+                const zoom = this.value;
+                document.body.dataset.zoom = zoom;
+                if (zoomValue) zoomValue.textContent = `${zoom}%`;
+                try {
+                    localStorage.setItem('garb-zoom', zoom);
+                } catch (e) {}
+            });
+        }
+
+        if (zoomReset) {
+            zoomReset.addEventListener('click', function() {
+                if (zoomSlider) {
+                    zoomSlider.value = 100;
+                    document.body.dataset.zoom = '100';
+                    if (zoomValue) zoomValue.textContent = '100%';
+                    try {
+                        localStorage.setItem('garb-zoom', '100');
+                    } catch (e) {}
+                }
             });
         }
 
@@ -581,6 +1288,16 @@
                 autoScrollEnabled = true;
                 if (autoscrollCheckbox) autoscrollCheckbox.checked = true;
             }
+
+            // Load saved zoom
+            const savedZoom = localStorage.getItem('garb-zoom');
+            if (savedZoom) {
+                document.body.dataset.zoom = savedZoom;
+                const zoomSlider = document.getElementById('garb-zoom-slider');
+                const zoomValue = document.getElementById('garb-zoom-value');
+                if (zoomSlider) zoomSlider.value = savedZoom;
+                if (zoomValue) zoomValue.textContent = `${savedZoom}%`;
+            }
         } catch (e) {
             console.log("Could not load saved preferences");
         }
@@ -598,6 +1315,10 @@
         window.focusedTimeInSeconds = 0;
         window.targetSiteURL = location.href;
         window.eyeTrackingViewMode = 1;
+        window.currentUser = null; // Will be set when user is retrieved
+
+        // Reset baseline mode state for new article
+        resetBaselineMode();
 
         console.log("GARB: Starting content extraction");
 
@@ -757,44 +1478,51 @@
             spanNum = plainResult.lineCount;
         }
 
-        // Settings panel HTML (integrated into status bar)
+        // Settings panel HTML (compact layout)
         const settingsPanel = `
             <div class="garb-settings-panel" id="garb-settings-panel">
-                <div class="garb-settings-section">
-                    <span class="garb-settings-label">Background</span>
-                    <div class="garb-theme-options">
-                        <button class="garb-theme-btn theme-white-btn" data-theme="white" title="White"></button>
-                        <button class="garb-theme-btn theme-gray-btn active" data-theme="gray" title="Gray"></button>
-                        <button class="garb-theme-btn theme-cream-btn" data-theme="cream" title="Sepia"></button>
-                        <button class="garb-theme-btn theme-dark-btn" data-theme="dark" title="Dark"></button>
+                <div class="garb-settings-row">
+                    <div class="garb-settings-col">
+                        <span class="garb-settings-label">Theme</span>
+                        <div class="garb-theme-options">
+                            <button class="garb-theme-btn theme-white-btn" data-theme="white" title="White"></button>
+                            <button class="garb-theme-btn theme-gray-btn active" data-theme="gray" title="Gray"></button>
+                            <button class="garb-theme-btn theme-cream-btn" data-theme="cream" title="Sepia"></button>
+                            <button class="garb-theme-btn theme-dark-btn" data-theme="dark" title="Dark"></button>
+                        </div>
+                    </div>
+                    <div class="garb-settings-col">
+                        <span class="garb-settings-label">Size</span>
+                        <div class="garb-size-options garb-zoom-control">
+                            <button class="garb-size-btn size-xs" data-size="xs" title="Small">A</button>
+                            <button class="garb-size-btn size-sm" data-size="small" title="Medium">A</button>
+                            <button class="garb-size-btn size-md active" data-size="medium" title="Large">A</button>
+                        </div>
                     </div>
                 </div>
-                <div class="garb-settings-section">
+                <div class="garb-settings-section garb-font-section">
                     <span class="garb-settings-label">Font</span>
                     <div class="garb-font-options">
-                        <button class="garb-font-btn active" data-font="serif" title="Serif">Serif</button>
-                        <button class="garb-font-btn" data-font="sans" title="Sans-serif">Sans</button>
-                        <button class="garb-font-btn" data-font="sf" title="San Francisco">SF</button>
-                        <button class="garb-font-btn" data-font="system" title="System">System</button>
-                        <button class="garb-font-btn" data-font="dyslexic" title="OpenDyslexic">Dyslexic</button>
+                        <button class="garb-font-btn active" data-font="serif">Serif</button>
+                        <button class="garb-font-btn" data-font="sans">Sans</button>
+                        <button class="garb-font-btn" data-font="sf">SF</button>
+                        <button class="garb-font-btn" data-font="dyslexic">Dyslexic</button>
                     </div>
                 </div>
-                <div class="garb-settings-section">
-                    <span class="garb-settings-label">Size</span>
-                    <div class="garb-size-options">
-                        <button class="garb-size-btn" data-size="small" title="Smaller text">A</button>
-                        <button class="garb-size-btn active" data-size="medium" title="Larger text">A</button>
+                <div class="garb-settings-section garb-mode-section">
+                    <span class="garb-settings-label">Mode</span>
+                    <div class="garb-mode-options-compact">
+                        <button class="garb-mode-btn-compact${currentTrackingMode === 'gaze' ? ' active' : ''}" data-mode="gaze" title="Eye tracking">Gaze</button>
+                        <button class="garb-mode-btn-compact${currentTrackingMode === 'baseline' ? ' active' : ''}" data-mode="baseline" title="Fixed pace">Baseline</button>
+                        <button class="garb-mode-btn-compact${currentTrackingMode === 'none' ? ' active' : ''}" data-mode="none" title="No highlight">Off</button>
                     </div>
                 </div>
-                <div class="garb-settings-section">
-                    <span class="garb-settings-label">Reading</span>
-                    <div class="garb-autoscroll-toggle">
-                        <span class="garb-autoscroll-label">Auto-scroll</span>
-                        <label class="garb-toggle-switch">
-                            <input type="checkbox" id="garb-autoscroll-checkbox">
-                            <span class="garb-toggle-slider"></span>
-                        </label>
-                    </div>
+                <div class="garb-settings-footer">
+                    <label class="garb-autoscroll-compact" title="Toggle auto-scroll (A)">
+                        <input type="checkbox" id="garb-autoscroll-checkbox">
+                        <span>Auto-scroll <kbd class="garb-shortcut-hint">A</kbd></span>
+                    </label>
+                    <button class="garb-reset-btn-compact" id="garb-clear-progress" title="Clear progress">↺ Reset</button>
                 </div>
             </div>
         `;
@@ -836,26 +1564,38 @@
     <title>${escapeHtml(result.title)} - Reading Mode</title>
     ${criticalCSS}
 </head>
-<body class="garb-reader theme-gray font-serif size-medium">
+<body class="garb-reader theme-gray font-serif size-medium" data-zoom="100" data-mode="${currentTrackingMode}">
     ${progressBar}
     ${sourceBar}
     ${settingsPanel}
     <main class="garb-main">
-        <article class="garb-article">
-            <header class="garb-header">
-                ${titleHTML}
-                ${metadataHTML}
-            </header>
-            ${imgHTML}
-            <div class="garb-content">
-                ${contentHTML}
-            </div>
-        </article>
+        <div class="garb-zoom-wrapper">
+            <article class="garb-article">
+                <header class="garb-header">
+                    ${titleHTML}
+                    ${metadataHTML}
+                </header>
+                ${imgHTML}
+                <div class="garb-content">
+                    ${contentHTML}
+                </div>
+            </article>
+        </div>
     </main>
 </body>
 </html>`;
 
         document.documentElement.innerHTML = newPage;
+
+        // IMPORTANT: Scroll to top of page for clean start
+        window.scrollTo(0, 0);
+
+        // Disable auto-scroll during initialization (prevent immediate scroll on first gaze)
+        autoScrollInitialized = false;
+        setTimeout(() => {
+            autoScrollInitialized = true;
+            console.log("GARB: Auto-scroll now enabled");
+        }, 2000); // 2 second grace period for user to orient
 
         // Load CSS and trigger animation after it loads
         try {
@@ -896,6 +1636,7 @@
         safeSendMessage(
             {contentScriptQuery: "getUser", data: null},
             result => {
+                window.currentUser = result; // Store globally for survey
                 const userData = {
                     user: result,
                     url: window.targetSiteURL
@@ -941,6 +1682,13 @@
                     }
                 }
 
+                // Initialize data logger for research data collection
+                initDataLogger();
+
+                // Initialize manual nudge controls and keyboard shortcuts
+                createNudgeControl();
+                setupKeyboardShortcuts();
+
                 const pageSessionData = {
                     url: window.targetSiteURL,
                     title: document.querySelector('.garb-title')?.textContent || 'Unknown',
@@ -948,7 +1696,9 @@
                     timestampStart: Date.now(),
                     timestampEnd: null,
                     sessionClosed: false,
-                    quadFreqs: null
+                    quadFreqs: null,
+                    // New research data fields
+                    settings_snapshot: dataLogger ? dataLogger.getSettingsSnapshot() : null
                 };
 
                 runWebSocket(quadFreqs, dbQuadFreqs, pageSessionData);
@@ -978,12 +1728,46 @@
 
         // Save data on page unload
         window.addEventListener("beforeunload", function() {
+            console.log("GARB: Page unloading - saving session data");
             const totalTime = Math.floor((Date.now() - window.startTime) / 1000);
 
             pageSessionData.timestampEnd = Date.now();
             pageSessionData.quadFreqs = quadFreqs;
             pageSessionData.sessionClosed = true;
 
+            // Add research data from DataLogger
+            if (dataLogger) {
+                // Finalize time tracking
+                dataLogger.updateTextPresence(false);
+
+                pageSessionData.summary = dataLogger.getSummary();
+
+                // Use size-safe gaze data to prevent 413 Payload Too Large errors
+                const gazeResult = dataLogger.getSizeSafeGazeData(400000); // ~400KB limit for gaze data
+                pageSessionData.gaze_events_jsonl = gazeResult.data;
+                if (gazeResult.sampled) {
+                    pageSessionData.gaze_data_sampled = true;
+                    pageSessionData.gaze_sampling_ratio = gazeResult.samplingRatio;
+                    pageSessionData.gaze_original_count = gazeResult.originalCount;
+                }
+
+                pageSessionData.ui_events_jsonl = dataLogger.uiToJSONL();
+                pageSessionData.settings_snapshot = dataLogger.getSettingsSnapshot();
+
+                // Add device and environment metadata for research paper
+                pageSessionData.device_metadata = dataLogger.getDeviceMetadata();
+                pageSessionData.processing_methods = dataLogger.getProcessingMethods();
+            }
+
+            console.log("GARB: Saving session for user:", pageSessionData.user);
+
+            // Use sendBeacon for reliable saving on page close (doesn't wait for response)
+            const beaconUrl = 'https://garb-api-service.onrender.com/pageSessions';
+            const blob = new Blob([JSON.stringify(pageSessionData)], { type: 'application/json' });
+            const beaconSent = navigator.sendBeacon(beaconUrl, blob);
+            console.log("GARB: sendBeacon result:", beaconSent);
+
+            // Also try the normal message as backup
             safeSendMessage({
                 contentScriptQuery: "saveToDatabase",
                 data: pageSessionData
@@ -1010,6 +1794,24 @@
                 ws.send("Socket Opened");
                 console.log("WebSocket connected to:", url);
                 window.eyeTrackingWebSocket = ws;
+
+                // Initialize gaze received time and start tracking lost check timer
+                gazeState.lastGazeReceivedTime = Date.now();
+                gazeState.lastValidGazeTime = Date.now();
+
+                // Periodic check for tracking lost (when no gaze data received)
+                gazeState.trackingLostCheckInterval = setInterval(() => {
+                    const now = Date.now();
+                    const timeSinceLastGaze = now - gazeState.lastGazeReceivedTime;
+
+                    // If no gaze data received for longer than threshold, trigger tracking lost
+                    if (timeSinceLastGaze > gazeState.trackingLostDuration) {
+                        console.log("GARB: No gaze data for", timeSinceLastGaze, "ms - checking tracking lost");
+                        checkTrackingLost(false);
+                    }
+                }, 500); // Check every 500ms
+                console.log("GARB: Tracking lost check timer started");
+
                 resolve(ws);
             };
 
@@ -1022,6 +1824,13 @@
 
             ws.onclose = function(event) {
                 clearTimeout(connectionTimeout);
+
+                // Clear tracking lost check interval
+                if (gazeState.trackingLostCheckInterval) {
+                    clearInterval(gazeState.trackingLostCheckInterval);
+                    gazeState.trackingLostCheckInterval = null;
+                }
+
                 if (!event.wasClean) {
                     console.log("WebSocket connection lost");
                     updateStatusIndicator("Connection lost", true);
@@ -1038,9 +1847,54 @@
                 const screenX = parseFloat(tokens[1]);
                 const screenY = parseFloat(tokens[2]);
 
+                // Track when gaze data was last received (for tracking lost detection)
+                gazeState.lastGazeReceivedTime = Date.now();
+
                 const coords = screenToViewport(screenX, screenY);
                 const smoothed = smoothGaze(coords.x, coords.y);
-                processGaze(ws, quadFreqs, dbQuadFreqs, smoothed.x, smoothed.y);
+
+                // ALWAYS log gaze data regardless of mode (for research purposes)
+                if (dataLogger) {
+                    dataLogger.logGaze(
+                        smoothed.x,
+                        smoothed.y,
+                        gazeState.confidence,
+                        smoothed.velocity || { magnitude: 0 }
+                    );
+                }
+
+                // CRITICAL: Check for tracking recovery FIRST (even when paused)
+                // This allows auto-resume and overlay dismissal when gaze returns
+                if (isPaused && pauseReason === 'tracking_lost' && currentTrackingMode === TRACKING_MODES.GAZE) {
+                    // Check if gaze is within viewport (on screen at all)
+                    const isOnScreen = smoothed.x >= 0 && smoothed.x <= window.innerWidth &&
+                                       smoothed.y >= 0 && smoothed.y <= window.innerHeight;
+
+                    if (isOnScreen) {
+                        // Check if gaze is on text for full recovery
+                        const lineMatch = mapGazeToLine(smoothed.y);
+                        if (lineMatch) {
+                            // Gaze is back on text - trigger full recovery
+                            console.log("GARB: Gaze back on text, triggering recovery");
+                            checkTrackingLost(true);
+                        } else {
+                            // Gaze is on screen but not on text - still dismiss overlay
+                            // but don't fully resume (user might be looking at toolbar, etc.)
+                            if (gazeState.trackingLost) {
+                                console.log("GARB: Gaze back on screen (not text), dismissing overlay");
+                                gazeState.trackingLost = false;
+                                hideTrackingLostIndicator();
+                            }
+                        }
+                    }
+                }
+
+                // Only process gaze for highlighting in GAZE mode and when not paused
+                // In BASELINE mode, highlighting is driven by processBaselineHighlight()
+                // In NONE mode, no highlighting at all
+                if (currentTrackingMode === TRACKING_MODES.GAZE && !isPaused) {
+                    processGaze(ws, quadFreqs, dbQuadFreqs, smoothed.x, smoothed.y, smoothed.velocity);
+                }
 
             } else if (tokens[0] === "duration") {
                 const temp = tokens[1].split(":");
@@ -1079,225 +1933,901 @@
         return { x: viewportX, y: viewportY };
     }
 
-    // Gaze smoothing buffer - balanced for stability and responsiveness
-    const gazeHistory = [];
-    const GAZE_HISTORY_SIZE = 5;
-
     /**
-     * Smooth gaze coordinates to reduce jitter while maintaining responsiveness
+     * Smooth gaze coordinates using Exponential Moving Average (EMA)
+     * Provides better responsiveness than median while maintaining stability
+     * Also calculates velocity for fixation/saccade detection
      */
     function smoothGaze(x, y) {
-        gazeHistory.push({ x, y, time: Date.now() });
-
-        // Keep only recent samples
-        while (gazeHistory.length > GAZE_HISTORY_SIZE) {
-            gazeHistory.shift();
-        }
-
-        // Remove samples older than 150ms
         const now = Date.now();
-        while (gazeHistory.length > 0 && now - gazeHistory[0].time > 150) {
-            gazeHistory.shift();
+
+        // Add to raw history for velocity calculation
+        gazeState.rawHistory.push({ x, y, time: now });
+
+        // Prune old samples
+        while (gazeState.rawHistory.length > gazeState.maxHistorySize) {
+            gazeState.rawHistory.shift();
+        }
+        while (gazeState.rawHistory.length > 0 &&
+               now - gazeState.rawHistory[0].time > gazeState.maxHistoryAgeMs) {
+            gazeState.rawHistory.shift();
         }
 
-        if (gazeHistory.length === 0) {
-            return { x, y };
+        // Calculate velocity from last two samples
+        let velocity = { x: 0, y: 0, magnitude: 0 };
+        if (gazeState.rawHistory.length >= 2) {
+            const curr = gazeState.rawHistory[gazeState.rawHistory.length - 1];
+            const prev = gazeState.rawHistory[gazeState.rawHistory.length - 2];
+            const dt = (curr.time - prev.time) / 1000; // seconds
+
+            if (dt > 0 && dt < 0.1) { // Sanity check
+                velocity.x = (curr.x - prev.x) / dt;
+                velocity.y = (curr.y - prev.y) / dt;
+                velocity.magnitude = Math.sqrt(velocity.x ** 2 + velocity.y ** 2);
+            }
         }
 
-        // Median filter for X (more robust to outliers than average)
-        const xValues = gazeHistory.map(p => p.x).sort((a, b) => a - b);
-        const yValues = gazeHistory.map(p => p.y).sort((a, b) => a - b);
+        // Smooth velocity over last 3 samples
+        gazeState.velocityHistory.push(velocity.magnitude);
+        if (gazeState.velocityHistory.length > 3) {
+            gazeState.velocityHistory.shift();
+        }
+        const smoothedVelocity = gazeState.velocityHistory.reduce((a, b) => a + b, 0) /
+                                 gazeState.velocityHistory.length;
+        velocity.magnitude = smoothedVelocity;
+        gazeState.velocity = velocity;
 
-        const midIdx = Math.floor(xValues.length / 2);
-        let smoothX, smoothY;
+        // Initialize EMA on first sample
+        if (gazeState.ema.x === null) {
+            gazeState.ema.x = x;
+            gazeState.ema.y = y;
+            return { x, y, velocity };
+        }
 
-        if (xValues.length % 2 === 0) {
-            smoothX = (xValues[midIdx - 1] + xValues[midIdx]) / 2;
-            smoothY = (yValues[midIdx - 1] + yValues[midIdx]) / 2;
+        // Adaptive alpha: faster response during movement, more smoothing when stable
+        let alpha = gazeState.emaAlpha;
+        if (velocity.magnitude > 200) {
+            alpha = Math.min(0.6, gazeState.emaAlpha * 1.5);
+        } else if (velocity.magnitude < 50) {
+            alpha = Math.max(0.15, gazeState.emaAlpha * 0.7);
+        }
+
+        // Apply EMA
+        gazeState.ema.x = alpha * x + (1 - alpha) * gazeState.ema.x;
+        gazeState.ema.y = alpha * y + (1 - alpha) * gazeState.ema.y;
+
+        // Calculate confidence based on velocity and consistency
+        gazeState.confidence = calculateConfidence(velocity.magnitude);
+
+        // Track time since last valid gaze on text
+        gazeState.lastValidGazeTime = now;
+
+        return {
+            x: gazeState.ema.x,
+            y: gazeState.ema.y,
+            velocity
+        };
+    }
+
+    /**
+     * Calculate gaze confidence based on velocity and consistency
+     */
+    function calculateConfidence(velocityMagnitude) {
+        let confidence = 1.0;
+
+        // Velocity-based confidence
+        if (velocityMagnitude > 2000) {
+            confidence *= 0.2;
+        } else if (velocityMagnitude > 1200) {
+            confidence *= 0.5;
+        } else if (velocityMagnitude > 800) {
+            confidence *= 0.8;
+        }
+
+        // Consistency check
+        if (gazeState.rawHistory.length >= 3) {
+            const recent = gazeState.rawHistory.slice(-3);
+            const avgX = recent.reduce((s, p) => s + p.x, 0) / 3;
+            const avgY = recent.reduce((s, p) => s + p.y, 0) / 3;
+
+            const variance = recent.reduce((s, p) => {
+                return s + (p.x - avgX) ** 2 + (p.y - avgY) ** 2;
+            }, 0) / 3;
+            const stdDev = Math.sqrt(variance);
+
+            if (stdDev > 100) {
+                confidence *= 0.5;
+            } else if (stdDev > 50) {
+                confidence *= 0.8;
+            }
+        }
+
+        // Smooth confidence
+        gazeState.confidenceHistory.push(confidence);
+        if (gazeState.confidenceHistory.length > 5) {
+            gazeState.confidenceHistory.shift();
+        }
+
+        return gazeState.confidenceHistory.reduce((a, b) => a + b, 0) /
+               gazeState.confidenceHistory.length;
+    }
+
+    /**
+     * Update line rectangles cache for robust line mapping
+     */
+    function updateLineRectsCache() {
+        const now = Date.now();
+
+        if (now - gazeState.lineRectsCacheTime < gazeState.lineRectsCacheDuration) {
+            return gazeState.lineRects;
+        }
+
+        const lines = document.querySelectorAll('.garb-line');
+        gazeState.lineRects = [];
+
+        lines.forEach((lineEl) => {
+            const rect = lineEl.getBoundingClientRect();
+            const lineNum = parseInt(lineEl.dataset.line);
+
+            if (!isNaN(lineNum)) {
+                gazeState.lineRects.push({
+                    lineNum,
+                    element: lineEl,
+                    top: rect.top,
+                    bottom: rect.bottom,
+                    centerY: rect.top + rect.height / 2,
+                    left: rect.left,
+                    right: rect.right,
+                    height: rect.height
+                });
+            }
+        });
+
+        gazeState.lineRects.sort((a, b) => a.top - b.top);
+        gazeState.lineRectsCacheTime = now;
+
+        return gazeState.lineRects;
+    }
+
+    /**
+     * Map gaze Y coordinate to nearest line using bounding rect geometry
+     */
+    function mapGazeToLine(gazeY) {
+        const lineRects = updateLineRectsCache();
+
+        if (lineRects.length === 0) return null;
+
+        let bestMatch = null;
+        let bestDistance = Infinity;
+
+        for (const lineRect of lineRects) {
+            if (lineRect.bottom < 0 || lineRect.top > window.innerHeight) {
+                continue;
+            }
+
+            const distance = Math.abs(gazeY - lineRect.centerY);
+
+            if (distance < bestDistance) {
+                bestDistance = distance;
+                bestMatch = {
+                    lineNum: lineRect.lineNum,
+                    distance,
+                    element: lineRect.element,
+                    rect: lineRect
+                };
+            }
+        }
+
+        return bestMatch;
+    }
+
+    /**
+     * Line lock with hysteresis - prevents rapid line switching
+     */
+    function applyLineLockHysteresis(detectedLineNum, gazeY, lineMatch) {
+        const now = Date.now();
+
+        // Check for nudge lock - if recently nudged, keep current line
+        if (now < gazeState.nudgeLockUntil) {
+            // Don't allow gaze to override the nudge
+            // console.log("Nudge lock active, ignoring gaze line:", detectedLineNum);
+            return gazeState.currentLockedLine;
+        }
+
+        // Initialize on first call
+        if (gazeState.currentLockedLine === -1) {
+            gazeState.currentLockedLine = detectedLineNum;
+            gazeState.candidateLine = -1;
+            return detectedLineNum;
+        }
+
+        // Same line as locked - reset candidate
+        if (detectedLineNum === gazeState.currentLockedLine) {
+            gazeState.candidateLine = -1;
+            gazeState.candidateLineCount = 0;
+            return gazeState.currentLockedLine;
+        }
+
+        // Different line - check for margin-based instant switch
+        if (lineMatch) {
+            const currentLineRect = gazeState.lineRects.find(
+                r => r.lineNum === gazeState.currentLockedLine
+            );
+
+            if (currentLineRect) {
+                const currentDistance = Math.abs(gazeY - currentLineRect.centerY);
+                const newDistance = lineMatch.distance;
+                const margin = currentDistance - newDistance;
+
+                if (margin > gazeState.lineMarginThreshold) {
+                    const oldLine = gazeState.currentLockedLine;
+                    gazeState.currentLockedLine = detectedLineNum;
+                    gazeState.candidateLine = -1;
+                    gazeState.candidateLineCount = 0;
+
+                    // Log line switch event
+                    if (dataLogger) {
+                        dataLogger.logUIEvent('line_switch', {
+                            old_line: oldLine,
+                            new_line: detectedLineNum,
+                            reason: 'margin_beat',
+                            margin_px: Math.round(margin)
+                        });
+
+                        // Detect regression (going back to earlier line)
+                        if (detectedLineNum < oldLine && oldLine > 0) {
+                            dataLogger.logUIEvent('regression', {
+                                from_line: oldLine,
+                                to_line: detectedLineNum,
+                                lines_back: oldLine - detectedLineNum
+                            });
+                        }
+                    }
+
+                    return detectedLineNum;
+                }
+            }
+        }
+
+        // Time-based hysteresis
+        if (detectedLineNum !== gazeState.candidateLine) {
+            gazeState.candidateLine = detectedLineNum;
+            gazeState.candidateLineStartTime = now;
+            gazeState.candidateLineCount = 1;
         } else {
-            smoothX = xValues[midIdx];
-            smoothY = yValues[midIdx];
+            gazeState.candidateLineCount++;
+
+            const dwellTime = now - gazeState.candidateLineStartTime;
+
+            if (dwellTime >= gazeState.lineLockDurationMs) {
+                const oldLine = gazeState.currentLockedLine;
+                gazeState.currentLockedLine = detectedLineNum;
+                gazeState.candidateLine = -1;
+                gazeState.candidateLineCount = 0;
+
+                // Log line switch event
+                if (dataLogger) {
+                    dataLogger.logUIEvent('line_switch', {
+                        old_line: oldLine,
+                        new_line: detectedLineNum,
+                        reason: 'dwell_time',
+                        dwell_ms: dwellTime
+                    });
+
+                    // Detect regression (going back to earlier line)
+                    if (detectedLineNum < oldLine && oldLine > 0) {
+                        dataLogger.logUIEvent('regression', {
+                            from_line: oldLine,
+                            to_line: detectedLineNum,
+                            lines_back: oldLine - detectedLineNum
+                        });
+                    }
+                }
+
+                return detectedLineNum;
+            }
         }
 
-        // Blend median with most recent for responsiveness (70% median, 30% latest)
-        const latest = gazeHistory[gazeHistory.length - 1];
-        smoothX = smoothX * 0.7 + latest.x * 0.3;
-        smoothY = smoothY * 0.7 + latest.y * 0.3;
+        return gazeState.currentLockedLine;
+    }
 
-        return { x: smoothX, y: smoothY };
+    /**
+     * Check for tracking lost state (gaze off text for too long)
+     * UNIFIED: Single threshold for both auto-pause AND visual indicator
+     */
+    function checkTrackingLost(isOnText) {
+        const now = Date.now();
+
+        if (isOnText) {
+            // Back on text - ALWAYS check for auto-resume first (regardless of trackingLost state)
+            if (isPaused && pauseReason === 'tracking_lost' && currentTrackingMode === TRACKING_MODES.GAZE) {
+                resumeTracking('tracking_recovered');
+            }
+
+            // Handle tracking lost state recovery
+            if (gazeState.trackingLost) {
+                const lostDuration = now - (gazeState.trackingLostStartTime || now);
+                gazeState.trackingLost = false;
+
+                if (dataLogger) {
+                    dataLogger.logUIEvent('tracking_reacquired', {
+                        duration_lost_ms: lostDuration,
+                        resume_line: gazeState.lastStablePosition.line
+                    });
+                }
+
+                hideTrackingLostIndicator();
+            }
+
+            gazeState.lastValidGazeTime = now;
+        } else {
+            // Off text
+            const timeSinceLastValid = now - gazeState.lastValidGazeTime;
+
+            // UNIFIED: Use single threshold for both pause AND indicator (GAZE mode only)
+            if (currentTrackingMode === TRACKING_MODES.GAZE && !gazeState.trackingLost) {
+                if (timeSinceLastValid > TRACKING_LOST_THRESHOLD_MS) {
+                    console.log("GARB: Tracking lost triggered! Time since last valid:", timeSinceLastValid, "ms");
+
+                    // Set tracking lost state
+                    gazeState.trackingLost = true;
+                    gazeState.trackingLostStartTime = now;
+
+                    // Auto-pause
+                    if (!isPaused) {
+                        pauseTracking('tracking_lost');
+                    }
+
+                    // Log event
+                    if (dataLogger) {
+                        dataLogger.logUIEvent('tracking_lost', {
+                            last_line: gazeState.lastStablePosition.line,
+                            last_word: gazeState.lastStablePosition.word
+                        });
+                    }
+
+                    // Show visual indicator
+                    showTrackingLostIndicator();
+                }
+            }
+        }
+    }
+
+    // Tracking lost indicator element
+    let trackingLostOverlay = null;
+
+    /**
+     * Show tracking lost visual indicator
+     */
+    function showTrackingLostIndicator() {
+        console.log("GARB: Showing tracking lost indicator");
+        if (trackingLostOverlay) return;
+
+        trackingLostOverlay = document.createElement('div');
+        trackingLostOverlay.className = 'garb-tracking-lost-overlay';
+        document.body.appendChild(trackingLostOverlay);
+        console.log("GARB: Tracking lost overlay added to DOM");
+
+        // Add resume marker to last stable line
+        const lastLine = gazeState.lastStablePosition.line;
+        if (lastLine >= 0) {
+            const lineEl = document.querySelector(`.garb-line[data-line="${lastLine}"]`);
+            if (lineEl) {
+                lineEl.classList.add('garb-resume-marker');
+            }
+        }
+
+        // Fade gaze bubble
+        if (gazeBubble) {
+            gazeBubble.style.opacity = '0.2';
+        }
+        if (gazeBubbleTrail) {
+            gazeBubbleTrail.style.opacity = '0.1';
+        }
+
+        updateStatusIndicator("Look at screen to continue", true);
+    }
+
+    /**
+     * Hide tracking lost indicator
+     */
+    function hideTrackingLostIndicator() {
+        if (trackingLostOverlay) {
+            trackingLostOverlay.remove();
+            trackingLostOverlay = null;
+        }
+
+        // Remove resume marker
+        const resumeMarker = document.querySelector('.garb-resume-marker');
+        if (resumeMarker) {
+            resumeMarker.classList.remove('garb-resume-marker');
+        }
+
+        // Restore gaze bubble
+        if (gazeBubble) {
+            gazeBubble.style.opacity = '1';
+        }
+        if (gazeBubbleTrail) {
+            gazeBubbleTrail.style.opacity = '0.8';
+        }
+
+        updateStatusIndicator("Eye tracking active");
+    }
+
+    // Manual nudge control element
+    let nudgeControl = null;
+
+    /**
+     * Create manual nudge buttons
+     */
+    function createNudgeControl() {
+        if (nudgeControl) return;
+
+        nudgeControl = document.createElement('div');
+        nudgeControl.className = 'garb-nudge-control';
+        nudgeControl.innerHTML = `
+            <button class="garb-nudge-btn" data-direction="up" title="Move up (Alt+Up)">▲</button>
+            <button class="garb-nudge-btn" data-direction="down" title="Move down (Alt+Down)">▼</button>
+        `;
+
+        nudgeControl.addEventListener('click', (e) => {
+            const btn = e.target.closest('.garb-nudge-btn');
+            if (btn) {
+                const direction = btn.dataset.direction;
+                manualNudge(direction);
+            }
+        });
+
+        document.body.appendChild(nudgeControl);
+    }
+
+    /**
+     * Manual nudge - move highlight up or down one line
+     */
+    function manualNudge(direction) {
+        console.log("Manual nudge:", direction);
+
+        // For baseline mode, use pace-based nudge
+        if (currentTrackingMode === TRACKING_MODES.BASELINE) {
+            const linesDelta = direction === 'up' ? -1 : 1;
+            nudgeBaselinePosition(linesDelta);
+
+            // Log the nudge event
+            if (dataLogger) {
+                dataLogger.logUIEvent('manual_nudge', {
+                    direction: direction,
+                    mode: 'baseline',
+                    new_word_index: baselineWordIndex
+                });
+            }
+
+            // Brief visual feedback
+            if (nudgeControl) {
+                const btn = nudgeControl.querySelector(`[data-direction="${direction}"]`);
+                if (btn) {
+                    btn.style.transform = 'scale(0.9)';
+                    setTimeout(() => { btn.style.transform = ''; }, 100);
+                }
+            }
+            return;
+        }
+
+        // Force refresh line rects cache
+        gazeState.lineRectsCacheTime = 0;
+        const lineRects = updateLineRectsCache();
+
+        if (lineRects.length === 0) {
+            console.log("No lines found for nudge");
+            return;
+        }
+
+        let currentLine = gazeState.currentLockedLine;
+        let currentIdx = -1;
+
+        // If no current line, start from the first visible line
+        if (currentLine < 0) {
+            // Find first line in viewport
+            for (let i = 0; i < lineRects.length; i++) {
+                if (lineRects[i].top >= 0 && lineRects[i].top < window.innerHeight) {
+                    currentIdx = i;
+                    currentLine = lineRects[i].lineNum;
+                    break;
+                }
+            }
+            if (currentIdx < 0) {
+                currentIdx = 0;
+                currentLine = lineRects[0].lineNum;
+            }
+        } else {
+            currentIdx = lineRects.findIndex(r => r.lineNum === currentLine);
+            if (currentIdx < 0) {
+                // Current line not in cache, find closest
+                currentIdx = 0;
+            }
+        }
+
+        let newIdx;
+        if (direction === 'up') {
+            newIdx = Math.max(0, currentIdx - 1);
+        } else {
+            newIdx = Math.min(lineRects.length - 1, currentIdx + 1);
+        }
+
+        const newLineNum = lineRects[newIdx].lineNum;
+        const oldLine = gazeState.currentLockedLine;
+
+        console.log("Nudge: old line", oldLine, "-> new line", newLineNum);
+
+        // Update locked line with nudge lock (prevents gaze from overriding)
+        gazeState.currentLockedLine = newLineNum;
+        gazeState.nudgeLockUntil = Date.now() + gazeState.nudgeLockDuration;
+        lastStableLineNum = newLineNum;
+        lastStableWordIdx = 0;
+
+        // Clear any existing line highlighting
+        clearOtherActiveLines(newLineNum);
+
+        // Update last stable position for resume marker
+        gazeState.lastStablePosition = { line: newLineNum, word: 0 };
+
+        // Log the nudge event
+        if (dataLogger) {
+            dataLogger.logUIEvent('manual_nudge', {
+                direction: direction,
+                old_line: oldLine,
+                new_line: newLineNum
+            });
+        }
+
+        // Update highlighting
+        const lineEl = document.querySelector(`.garb-line[data-line="${newLineNum}"]`);
+        if (lineEl) {
+            applyWordHighlighting(lineEl, newLineNum, wordReadProgress[newLineNum] || -1, 0);
+
+            // Scroll line into view if needed
+            const rect = lineEl.getBoundingClientRect();
+            if (rect.top < 100 || rect.bottom > window.innerHeight - 100) {
+                lineEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            }
+        }
+
+        // Brief visual feedback
+        if (nudgeControl) {
+            const btn = nudgeControl.querySelector(`[data-direction="${direction}"]`);
+            if (btn) {
+                btn.style.transform = 'scale(0.9)';
+                setTimeout(() => { btn.style.transform = ''; }, 100);
+            }
+        }
+    }
+
+    /**
+     * Setup keyboard shortcuts
+     */
+    function setupKeyboardShortcuts() {
+        document.addEventListener('keydown', (e) => {
+            // Alt+Up: Nudge up
+            if (e.altKey && e.key === 'ArrowUp') {
+                e.preventDefault();
+                manualNudge('up');
+            }
+
+            // Alt+Down: Nudge down
+            if (e.altKey && e.key === 'ArrowDown') {
+                e.preventDefault();
+                manualNudge('down');
+            }
+
+            // Alt+Shift+T: Toggle tracking (send message to popup)
+            if (e.altKey && e.shiftKey && e.key === 'T') {
+                e.preventDefault();
+                safeSendMessage({ action: 'toggleTracking' });
+            }
+
+            // L key: Toggle pause/lock (no modifiers to avoid conflicts)
+            if ((e.key === 'l' || e.key === 'L') && !e.altKey && !e.ctrlKey && !e.metaKey) {
+                // Don't trigger if user is typing in an input field
+                if (e.target.tagName !== 'INPUT' && e.target.tagName !== 'TEXTAREA') {
+                    e.preventDefault();
+                    togglePause('manual');
+                }
+            }
+
+            // A key: Toggle auto-scroll
+            if ((e.key === 'a' || e.key === 'A') && !e.altKey && !e.ctrlKey && !e.metaKey) {
+                // Don't trigger if user is typing in an input field
+                if (e.target.tagName !== 'INPUT' && e.target.tagName !== 'TEXTAREA') {
+                    e.preventDefault();
+                    toggleAutoScroll();
+                }
+            }
+        });
+    }
+
+    /**
+     * Toggle auto-scroll and update UI
+     */
+    function toggleAutoScroll() {
+        autoScrollEnabled = !autoScrollEnabled;
+
+        // Update checkbox if it exists
+        const checkbox = document.getElementById('garb-autoscroll-checkbox');
+        if (checkbox) {
+            checkbox.checked = autoScrollEnabled;
+        }
+
+        // Save preference
+        try {
+            localStorage.setItem('garb-autoscroll', autoScrollEnabled ? 'true' : 'false');
+        } catch (e) {}
+
+        // Show brief visual feedback
+        showAutoScrollFeedback(autoScrollEnabled);
+
+        console.log("GARB: Auto-scroll toggled:", autoScrollEnabled);
+    }
+
+    /**
+     * Show brief visual feedback when auto-scroll is toggled
+     */
+    function showAutoScrollFeedback(enabled) {
+        // Remove existing feedback if any
+        const existing = document.querySelector('.garb-autoscroll-feedback');
+        if (existing) existing.remove();
+
+        const feedback = document.createElement('div');
+        feedback.className = 'garb-autoscroll-feedback';
+        feedback.textContent = enabled ? 'Auto-scroll ON' : 'Auto-scroll OFF';
+        feedback.style.cssText = `
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: ${enabled ? 'rgba(76, 175, 80, 0.9)' : 'rgba(100, 100, 100, 0.9)'};
+            color: white;
+            padding: 12px 24px;
+            border-radius: 8px;
+            font-size: 16px;
+            font-weight: 500;
+            z-index: 100001;
+            pointer-events: none;
+            opacity: 1;
+            transition: opacity 0.3s ease;
+        `;
+        document.body.appendChild(feedback);
+
+        // Fade out and remove
+        setTimeout(() => {
+            feedback.style.opacity = '0';
+            setTimeout(() => feedback.remove(), 300);
+        }, 800);
     }
 
     /**
      * Process gaze data and update word-by-word highlighting
-     * Uses stabilization to prevent jitter
+     * Uses line lock with hysteresis for stability
      */
-    function processGaze(ws, quadFreqs, dbQuadFreqs, x, y) {
-        const el = document.elementFromPoint(x, y);
-        if (!el) return;
-
-        let lineEl = null;
-        let wordEl = null;
-
-        if (el.classList.contains('garb-word')) {
-            wordEl = el;
-            lineEl = el.parentElement;
-            // Handle case where word is inside a link
-            if (!lineEl || !lineEl.classList.contains('garb-line')) {
-                lineEl = el.closest('.garb-line');
+    function processGaze(ws, quadFreqs, dbQuadFreqs, x, y, velocity = { magnitude: 0 }) {
+        // Check for saccade (rapid eye movement) - freeze during saccades
+        if (velocity.magnitude > gazeState.saccadeThreshold) {
+            if (!gazeState.saccadeActive) {
+                gazeState.saccadeActive = true;
+                gazeState.saccadeFreezeStartTime = Date.now();
             }
-        } else if (el.classList.contains('garb-line')) {
-            lineEl = el;
-        } else {
-            wordEl = el.closest('.garb-word');
-            lineEl = el.closest('.garb-line');
+            return; // Skip processing during saccade
+        } else if (gazeState.saccadeActive) {
+            const freezeDuration = Date.now() - gazeState.saccadeFreezeStartTime;
+            if (freezeDuration < gazeState.saccadeFreezeMinDuration) {
+                return; // Still in freeze period
+            }
+            gazeState.saccadeActive = false;
         }
 
-        if (!lineEl) return;
+        // Use robust line mapping
+        const lineMatch = mapGazeToLine(y);
+        let lineEl = null;
+        let lineNum = -1;
 
-        const lineNum = parseInt(lineEl.dataset.line);
+        if (lineMatch) {
+            lineEl = lineMatch.element;
+            lineNum = lineMatch.lineNum;
+        } else {
+            // Fallback to elementFromPoint
+            const el = document.elementFromPoint(x, y);
+            if (!el) {
+                checkTrackingLost(false);
+                if (dataLogger) dataLogger.updateTextPresence(false);
+                return;
+            }
+
+            if (el.classList.contains('garb-word')) {
+                lineEl = el.closest('.garb-line');
+            } else if (el.classList.contains('garb-line')) {
+                lineEl = el;
+            } else {
+                lineEl = el.closest('.garb-line');
+            }
+
+            if (!lineEl) {
+                checkTrackingLost(false);
+                if (dataLogger) dataLogger.updateTextPresence(false);
+                return;
+            }
+
+            lineNum = parseInt(lineEl.dataset.line);
+        }
+
+        // Valid gaze on text
+        checkTrackingLost(true);
+        if (dataLogger) dataLogger.updateTextPresence(true);
+
         if (isNaN(lineNum) || lineNum < 0 || lineNum >= quadFreqs.length) return;
 
         if (wordReadProgress[lineNum] === undefined) {
             wordReadProgress[lineNum] = -1;
         }
 
-        let rawWordIdx = -1;
-        if (wordEl) {
-            rawWordIdx = parseInt(wordEl.dataset.word);
-        } else {
-            // Improved accuracy: find closest word by position
-            const words = lineEl.querySelectorAll('.garb-word');
-            let closestWord = null;
-            let closestDist = Infinity;
+        // Find closest word by position
+        const words = lineEl.querySelectorAll('.garb-word');
+        let rawWordIdx = 0;
+        let closestDist = Infinity;
 
-            words.forEach((w, idx) => {
-                const rect = w.getBoundingClientRect();
-                const centerX = rect.left + rect.width / 2;
-                const dist = Math.abs(x - centerX);
-                if (dist < closestDist) {
-                    closestDist = dist;
-                    closestWord = idx;
-                }
-            });
+        words.forEach((w, idx) => {
+            const rect = w.getBoundingClientRect();
+            const centerX = rect.left + rect.width / 2;
+            const dist = Math.abs(x - centerX);
+            if (dist < closestDist) {
+                closestDist = dist;
+                rawWordIdx = idx;
+            }
+        });
 
-            rawWordIdx = closestWord !== null ? closestWord : 0;
-        }
+        // Apply line lock with hysteresis
+        const lockedLineNum = applyLineLockHysteresis(lineNum, y, lineMatch);
 
-        // Stabilization: Only update current position if gaze stays consistent
+        // Get the locked line element
+        const lockedLineEl = document.querySelector(`.garb-line[data-line="${lockedLineNum}"]`);
+        if (!lockedLineEl) return;
+
+        // Word-level stabilization (simpler than before)
         let stableWordIdx = lastStableWordIdx;
-        let stableLineNum = lastStableLineNum;
 
-        if (lineNum === lastStableLineNum && rawWordIdx === lastStableWordIdx) {
-            // Same position, increase stability
-            stabilityCounter = Math.min(stabilityCounter + 1, STABILITY_THRESHOLD + 5);
-        } else if (lineNum === lastStableLineNum && Math.abs(rawWordIdx - lastStableWordIdx) <= 1) {
-            // Adjacent word on same line - allow with lower threshold
+        if (lockedLineNum !== lastStableLineNum) {
+            // Line changed - accept new word position
+            stableWordIdx = rawWordIdx;
+            lastStableLineNum = lockedLineNum;
+            lastStableWordIdx = rawWordIdx;
+        } else if (Math.abs(rawWordIdx - lastStableWordIdx) <= 1) {
+            // Adjacent word - accept immediately
+            stableWordIdx = rawWordIdx;
+            lastStableWordIdx = rawWordIdx;
+        } else {
+            // Jump of multiple words - require brief stability
             stabilityCounter++;
             if (stabilityCounter >= 2) {
                 stableWordIdx = rawWordIdx;
                 lastStableWordIdx = rawWordIdx;
-                stabilityCounter = STABILITY_THRESHOLD;
-            }
-        } else if (lineNum !== lastStableLineNum) {
-            // Different line - require more stability
-            stabilityCounter++;
-            if (stabilityCounter >= STABILITY_THRESHOLD) {
-                stableLineNum = lineNum;
-                stableWordIdx = rawWordIdx;
-                lastStableLineNum = lineNum;
-                lastStableWordIdx = rawWordIdx;
-                stabilityCounter = STABILITY_THRESHOLD;
-            }
-        } else {
-            // Same line but jumped multiple words - be cautious
-            stabilityCounter = Math.max(0, stabilityCounter - 1);
-            if (stabilityCounter <= 0) {
-                stableWordIdx = rawWordIdx;
-                lastStableWordIdx = rawWordIdx;
-                stabilityCounter = 1;
+                stabilityCounter = 0;
             }
         }
 
         // Initialize if first run
         if (lastStableLineNum === -1) {
-            lastStableLineNum = lineNum;
+            lastStableLineNum = lockedLineNum;
             lastStableWordIdx = rawWordIdx;
-            stableLineNum = lineNum;
             stableWordIdx = rawWordIdx;
         }
 
+        // Save stable position for resume marker
+        gazeState.lastStablePosition = {
+            line: lockedLineNum,
+            word: stableWordIdx
+        };
+
         // Progressive fill - only advance reading progress, never go back
-        if (stableWordIdx > wordReadProgress[stableLineNum]) {
-            const newWordsRead = stableWordIdx - wordReadProgress[stableLineNum];
+        if (stableWordIdx > wordReadProgress[lockedLineNum]) {
+            const newWordsRead = stableWordIdx - wordReadProgress[lockedLineNum];
             wordsRead += newWordsRead;
-            wordReadProgress[stableLineNum] = stableWordIdx;
+            wordReadProgress[lockedLineNum] = stableWordIdx;
             updateReadingProgress();
+
+            // Update dataLogger summary
+            if (dataLogger) {
+                dataLogger.summary.total_words_read = wordsRead;
+                dataLogger.summary.total_lines_read = Object.keys(wordReadProgress).length;
+            }
         }
 
         // Apply highlighting with stable position
-        const stableLineEl = document.querySelector(`.garb-line[data-line="${stableLineNum}"]`);
-        if (stableLineEl) {
-            // Additional stabilization for current indicator display
-            const now = Date.now();
-            let indicatorWordIdx = stableWordIdx;
-            let indicatorLineNum = stableLineNum;
+        const now = Date.now();
+        let indicatorWordIdx = stableWordIdx;
 
-            // Only update indicator if enough time has passed or position changed significantly
-            const shouldUpdateIndicator = (now - lastIndicatorChangeTime > INDICATOR_MIN_DELAY) ||
-                (stableLineNum !== displayedCurrentLine) ||
-                (Math.abs(stableWordIdx - displayedCurrentWord) > 2);
+        // Only update indicator if enough time has passed
+        const shouldUpdateIndicator = (now - lastIndicatorChangeTime > INDICATOR_MIN_DELAY) ||
+            (lockedLineNum !== displayedCurrentLine) ||
+            (Math.abs(stableWordIdx - displayedCurrentWord) > 2);
 
-            if (shouldUpdateIndicator) {
-                displayedCurrentLine = stableLineNum;
-                displayedCurrentWord = stableWordIdx;
-                lastIndicatorChangeTime = now;
-            } else {
-                // Keep the old indicator position
-                indicatorWordIdx = displayedCurrentWord;
-                indicatorLineNum = displayedCurrentLine;
-            }
-
-            applyWordHighlighting(stableLineEl, stableLineNum, wordReadProgress[stableLineNum], indicatorWordIdx);
+        if (shouldUpdateIndicator) {
+            displayedCurrentLine = lockedLineNum;
+            displayedCurrentWord = stableWordIdx;
+            lastIndicatorChangeTime = now;
+        } else {
+            indicatorWordIdx = displayedCurrentWord;
         }
 
-        // Smooth auto-scroll - keeps reading position in comfortable zone
-        if (autoScrollEnabled && stableLineEl) {
-            const now = Date.now();
-            if (now - lastScrollTime > SCROLL_COOLDOWN) {
-                const rect = stableLineEl.getBoundingClientRect();
-                const viewportHeight = window.innerHeight;
+        applyWordHighlighting(lockedLineEl, lockedLineNum, wordReadProgress[lockedLineNum], indicatorWordIdx);
 
-                // Comfort zone: keep current line between 30% and 55% of viewport
-                const topThreshold = viewportHeight * 0.30;
-                const bottomThreshold = viewportHeight * 0.55;
+        // Research-based auto-scroll for Mode A (Gaze)
+        // Based on Kumar & Winograd (2007) and Sharmin et al. (2013):
+        // - Users have a "preferred reading zone" (middle section of viewport)
+        // - Scroll triggers when gaze dwells in trigger zones for ~300ms
+        // - Supports both scroll down (gaze at bottom) and scroll up (gaze at top)
+        if (autoScrollEnabled && autoScrollInitialized && lockedLineEl) {
+            const rect = lockedLineEl.getBoundingClientRect();
+            const viewportHeight = window.innerHeight;
+            const linePosition = rect.top / viewportHeight;
 
-                if (rect.top < topThreshold || rect.bottom > bottomThreshold) {
-                    // Target: position line at 40% from top for comfortable reading
-                    const targetPosition = viewportHeight * 0.40;
-                    const scrollAmount = rect.top - targetPosition;
+            // Check scroll down trigger (gaze below preferred zone)
+            const inScrollDownZone = linePosition > SCROLL_ZONE_BOTTOM;
+            // Check scroll up trigger (gaze above preferred zone)
+            const inScrollUpZone = linePosition < SCROLL_ZONE_TOP && window.scrollY > 50;
 
-                    // Only scroll if the adjustment is meaningful (> 20px)
-                    if (Math.abs(scrollAmount) > 20) {
-                        // Cancel any pending scroll animation
-                        if (scrollAnimationFrame) {
-                            cancelAnimationFrame(scrollAnimationFrame);
+            if (inScrollDownZone) {
+                scrollUpTriggerStartTime = 0; // Reset up timer
+                if (scrollTriggerStartTime === 0) {
+                    scrollTriggerStartTime = now;
+                } else {
+                    const dwellTime = now - scrollTriggerStartTime;
+                    if (dwellTime >= SCROLL_DWELL_TIME && now - lastScrollTime > SCROLL_COOLDOWN_GAZE) {
+                        const targetPosition = viewportHeight * 0.35; // Bring to comfortable position
+                        const scrollAmount = rect.top - targetPosition;
+
+                        if (scrollAmount > 50) {
+                            smoothScrollBy(scrollAmount, SCROLL_DURATION_MS);
+
+                            if (dataLogger) {
+                                dataLogger.logUIEvent('scroll', {
+                                    direction: 'down',
+                                    delta_y: Math.round(scrollAmount),
+                                    triggered_by: 'gaze_auto',
+                                    dwell_time_ms: dwellTime
+                                });
+                            }
+                            lastScrollTime = now;
+                            scrollTriggerStartTime = 0;
                         }
-
-                        // Use smaller incremental scrolls for smoother motion
-                        const maxScrollPerFrame = 150; // Cap scroll speed
-                        const clampedScroll = Math.sign(scrollAmount) * Math.min(Math.abs(scrollAmount), maxScrollPerFrame);
-
-                        targetScrollY = window.scrollY + scrollAmount;
-
-                        // Smooth scroll with easing
-                        window.scrollBy({
-                            top: clampedScroll,
-                            behavior: 'smooth'
-                        });
-
-                        lastScrollTime = now;
                     }
                 }
+            } else if (inScrollUpZone) {
+                scrollTriggerStartTime = 0; // Reset down timer
+                if (scrollUpTriggerStartTime === 0) {
+                    scrollUpTriggerStartTime = now;
+                } else {
+                    const dwellTime = now - scrollUpTriggerStartTime;
+                    if (dwellTime >= SCROLL_DWELL_TIME && now - lastScrollTime > SCROLL_COOLDOWN_GAZE) {
+                        const targetPosition = viewportHeight * 0.45; // Bring to center
+                        const scrollAmount = rect.top - targetPosition;
+
+                        if (scrollAmount < -50) {
+                            smoothScrollBy(scrollAmount, SCROLL_DURATION_MS);
+
+                            if (dataLogger) {
+                                dataLogger.logUIEvent('scroll', {
+                                    direction: 'up',
+                                    delta_y: Math.round(scrollAmount),
+                                    triggered_by: 'gaze_auto',
+                                    dwell_time_ms: dwellTime
+                                });
+                            }
+                            lastScrollTime = now;
+                            scrollUpTriggerStartTime = 0;
+                        }
+                    }
+                }
+            } else {
+                // Gaze in preferred zone - reset both timers
+                scrollTriggerStartTime = 0;
+                scrollUpTriggerStartTime = 0;
             }
         }
 
@@ -1312,6 +2842,726 @@
         if (ws.readyState === WebSocket.OPEN) {
             ws.send(`${lineNum}|${rawWordIdx}|${Date.now()}`);
         }
+    }
+
+    // ========================================
+    // MODE B: BASELINE (VIEWPORT-CENTER) HIGHLIGHTING
+    // ========================================
+
+    /**
+     * Build a flat map of all words in document order for pace-based baseline
+     * Each entry: {line: lineNum, wordIdx: wordIdxInLine, globalIdx: globalWordIndex}
+     */
+    function buildBaselineWordMap() {
+        baselineWordMap = [];
+        const lines = document.querySelectorAll('.garb-line');
+        let globalIdx = 0;
+
+        lines.forEach(lineEl => {
+            const lineNum = parseInt(lineEl.dataset.line);
+            const words = lineEl.querySelectorAll('.garb-word');
+
+            words.forEach((wordEl, wordIdx) => {
+                baselineWordMap.push({
+                    line: lineNum,
+                    wordIdx: wordIdx,
+                    globalIdx: globalIdx,
+                    element: wordEl
+                });
+                globalIdx++;
+            });
+        });
+
+        baselineTotalWords = baselineWordMap.length;
+        baselineInitialized = true;
+        console.log(`GARB: Built baseline word map with ${baselineTotalWords} words`);
+    }
+
+    /**
+     * Process pace-based baseline mode (Mode B) - "Teleprompter" style
+     * Advances through text at a fixed WPM rate, providing a fair control condition
+     * that simulates what a non-gaze reading aid would do
+     */
+    function processBaselineHighlight() {
+        if (currentTrackingMode !== TRACKING_MODES.BASELINE) return;
+        if (isPaused) return;
+        if (!baselineInitialized || baselineTotalWords === 0) return;
+
+        const now = Date.now();
+
+        // Calculate effective reading time (excluding paused time)
+        const effectiveTime = now - baselineStartTime - baselinePausedDuration;
+
+        // Calculate target word index based on WPM
+        // WPM / 60 = words per second, / 1000 = words per millisecond
+        const wordsPerMs = baselineWPM / 60000;
+        let targetWordIndex = Math.floor(effectiveTime * wordsPerMs);
+
+        // Clamp to valid range
+        targetWordIndex = Math.max(0, Math.min(targetWordIndex, baselineTotalWords - 1));
+
+        // Get current word info from map
+        const wordInfo = baselineWordMap[targetWordIndex];
+        if (!wordInfo) return;
+
+        const lineNum = wordInfo.line;
+        const wordIdx = wordInfo.wordIdx;
+
+        // Update baseline word index for nudge controls
+        baselineWordIndex = targetWordIndex;
+
+        // Get line element
+        const lineEl = document.querySelector(`.garb-line[data-line="${lineNum}"]`);
+        if (!lineEl) return;
+
+        // Initialize word progress for this line if needed
+        if (wordReadProgress[lineNum] === undefined) {
+            wordReadProgress[lineNum] = -1;
+        }
+
+        // Save stable position for resume marker
+        gazeState.lastStablePosition = {
+            line: lineNum,
+            word: wordIdx
+        };
+
+        // Progressive fill - mark all words up to current as read
+        if (wordIdx > wordReadProgress[lineNum]) {
+            const newWordsRead = wordIdx - wordReadProgress[lineNum];
+            wordsRead += newWordsRead;
+            wordReadProgress[lineNum] = wordIdx;
+            updateReadingProgress();
+
+            if (dataLogger) {
+                dataLogger.summary.total_words_read = wordsRead;
+                dataLogger.summary.total_lines_read = Object.keys(wordReadProgress).length;
+            }
+        }
+
+        // Also mark previous lines as complete
+        for (let prevLine = 0; prevLine < lineNum; prevLine++) {
+            const prevLineEl = document.querySelector(`.garb-line[data-line="${prevLine}"]`);
+            if (prevLineEl) {
+                const prevWordCount = prevLineEl.querySelectorAll('.garb-word').length;
+                if (wordReadProgress[prevLine] === undefined || wordReadProgress[prevLine] < prevWordCount - 1) {
+                    const prevProgress = wordReadProgress[prevLine] || -1;
+                    const newWords = (prevWordCount - 1) - prevProgress;
+                    if (newWords > 0) {
+                        wordsRead += newWords;
+                        wordReadProgress[prevLine] = prevWordCount - 1;
+                    }
+                }
+            }
+        }
+
+        // Apply highlighting
+        const shouldUpdateIndicator = (now - lastIndicatorChangeTime > INDICATOR_MIN_DELAY) ||
+            (lineNum !== displayedCurrentLine) ||
+            (Math.abs(wordIdx - displayedCurrentWord) > 0);
+
+        if (shouldUpdateIndicator) {
+            displayedCurrentLine = lineNum;
+            displayedCurrentWord = wordIdx;
+            lastIndicatorChangeTime = now;
+        }
+
+        applyWordHighlighting(lineEl, lineNum, wordReadProgress[lineNum], wordIdx);
+
+        // Auto-scroll for Mode B (Baseline) - uses same preferred reading zone as Mode A
+        // No dwell time needed since baseline is pace-controlled (deterministic position)
+        if (autoScrollEnabled && autoScrollInitialized && lineEl) {
+            const viewportHeight = window.innerHeight;
+            if (now - lastScrollTime > SCROLL_COOLDOWN_BASELINE) {
+                const rect = lineEl.getBoundingClientRect();
+
+                // Check if line is below preferred reading zone
+                const linePosition = rect.top / viewportHeight;
+
+                if (linePosition > SCROLL_ZONE_BOTTOM) {
+                    // Bring line to preferred reading zone
+                    const targetPosition = viewportHeight * SCROLL_ZONE_TOP;
+                    const scrollAmount = rect.top - targetPosition;
+
+                    if (scrollAmount > 50) {
+                        // Use custom smooth scroll for consistent, gradual animation
+                        smoothScrollBy(scrollAmount, SCROLL_DURATION_MS);
+
+                        if (dataLogger) {
+                            dataLogger.logUIEvent('scroll', {
+                                direction: 'down',
+                                delta_y: Math.round(scrollAmount),
+                                triggered_by: 'baseline_auto',
+                                wpm: baselineWPM
+                            });
+                        }
+
+                        lastScrollTime = now;
+                    }
+                }
+            }
+        }
+
+        // Log current position periodically (every ~1 second)
+        if (dataLogger && targetWordIndex % Math.ceil(baselineWPM / 60) === 0) {
+            dataLogger.logUIEvent('baseline_position', {
+                global_word_index: targetWordIndex,
+                line: lineNum,
+                word_in_line: wordIdx,
+                wpm: baselineWPM,
+                effective_time_ms: effectiveTime
+            });
+        }
+    }
+
+    /**
+     * Start pace-based baseline mode
+     */
+    function startBaselineMode() {
+        // Build word map if not done
+        if (!baselineInitialized) {
+            buildBaselineWordMap();
+        }
+
+        // Initialize timing
+        const now = Date.now();
+
+        // If resuming, don't reset start time - just continue from pause
+        if (baselineStartTime === 0) {
+            baselineStartTime = now;
+            baselineWordIndex = 0;
+            baselinePausedDuration = 0;
+        }
+
+        // Start update interval
+        if (baselineUpdateInterval) {
+            clearInterval(baselineUpdateInterval);
+        }
+        baselineUpdateInterval = setInterval(processBaselineHighlight, BASELINE_UPDATE_RATE_MS);
+
+        console.log(`GARB: Baseline mode started at ${baselineWPM} WPM`);
+    }
+
+    /**
+     * Stop the baseline update interval
+     */
+    function stopBaselineMode() {
+        if (baselineUpdateInterval) {
+            clearInterval(baselineUpdateInterval);
+            baselineUpdateInterval = null;
+        }
+        console.log("GARB: Baseline mode stopped");
+    }
+
+    /**
+     * Reset baseline mode state (for new articles)
+     */
+    function resetBaselineMode() {
+        baselineWordIndex = 0;
+        baselineStartTime = 0;
+        baselinePausedDuration = 0;
+        baselinePauseStartTime = 0;
+        baselineWordMap = [];
+        baselineTotalWords = 0;
+        baselineInitialized = false;
+    }
+
+    /**
+     * Nudge baseline position forward/backward by lines
+     * @param {number} linesDelta - positive = forward, negative = backward
+     */
+    function nudgeBaselinePosition(linesDelta) {
+        if (!baselineInitialized || baselineTotalWords === 0) return;
+
+        // Find current line's word count to estimate nudge amount
+        const currentWord = baselineWordMap[baselineWordIndex];
+        if (!currentWord) return;
+
+        // Average ~10 words per line, adjust by linesDelta
+        const wordsToNudge = linesDelta * 10;
+        const newIndex = Math.max(0, Math.min(baselineWordIndex + wordsToNudge, baselineTotalWords - 1));
+
+        // Adjust the start time to match the new position
+        // This effectively "jumps" to the new position while keeping the pace
+        const wordsPerMs = baselineWPM / 60000;
+        const timeForNewPosition = newIndex / wordsPerMs;
+        const now = Date.now();
+
+        // Recalculate start time so that current effective time gives us newIndex
+        baselineStartTime = now - baselinePausedDuration - timeForNewPosition;
+        baselineWordIndex = newIndex;
+
+        console.log(`GARB: Baseline nudged by ${linesDelta} lines, new word index: ${newIndex}`);
+    }
+
+    /**
+     * Adjust baseline WPM
+     * @param {number} newWPM - new words per minute rate
+     */
+    function setBaselineWPM(newWPM) {
+        // Clamp to reasonable range
+        newWPM = Math.max(100, Math.min(400, newWPM));
+
+        // Adjust start time to maintain current position at new rate
+        if (baselineInitialized && baselineStartTime > 0) {
+            const now = Date.now();
+            const effectiveTime = now - baselineStartTime - baselinePausedDuration;
+            const wordsPerMs = baselineWPM / 60000;
+            const currentWordIndex = Math.floor(effectiveTime * wordsPerMs);
+
+            // Recalculate start time for new WPM to keep same position
+            const newWordsPerMs = newWPM / 60000;
+            const newTimeForPosition = currentWordIndex / newWordsPerMs;
+            baselineStartTime = now - baselinePausedDuration - newTimeForPosition;
+        }
+
+        baselineWPM = newWPM;
+        console.log(`GARB: Baseline WPM set to ${newWPM}`);
+
+        if (dataLogger) {
+            dataLogger.logUIEvent('wpm_change', { wpm: newWPM });
+        }
+    }
+
+    // ========================================
+    // PAUSE/LOCK FUNCTIONALITY
+    // ========================================
+
+    /**
+     * Toggle pause state
+     * @param {string} reason - 'manual' or 'tracking_lost'
+     */
+    function togglePause(reason = 'manual') {
+        if (isPaused) {
+            resumeTracking(reason);
+        } else {
+            pauseTracking(reason);
+        }
+    }
+
+    /**
+     * Pause tracking - freeze highlight at current position
+     * @param {string} reason - 'manual' or 'tracking_lost'
+     */
+    function pauseTracking(reason = 'manual') {
+        if (isPaused) return;
+
+        isPaused = true;
+        pauseReason = reason;
+
+        // Track pause start time for baseline mode
+        baselinePauseStartTime = Date.now();
+
+        // Log pause event
+        if (dataLogger) {
+            dataLogger.logUIEvent('pause_on', {
+                reason: reason,
+                line: gazeState.lastStablePosition.line,
+                word: gazeState.lastStablePosition.word,
+                mode: currentTrackingMode,
+                baseline_word_index: currentTrackingMode === TRACKING_MODES.BASELINE ? baselineWordIndex : null
+            });
+        }
+
+        // Update status indicator
+        const statusText = reason === 'manual' ? 'Paused (L to resume)' : 'Paused (tracking lost)';
+        updateStatusIndicator(statusText, false);
+
+        // Stop baseline interval if running
+        if (currentTrackingMode === TRACKING_MODES.BASELINE) {
+            stopBaselineMode();
+        }
+
+        console.log("GARB: Tracking paused -", reason);
+    }
+
+    /**
+     * Resume tracking from paused state
+     * @param {string} reason - 'manual' or 'tracking_recovered'
+     */
+    function resumeTracking(reason = 'manual') {
+        if (!isPaused) return;
+
+        const wasPausedFor = pauseReason;
+        isPaused = false;
+        pauseReason = null;
+
+        // Add paused duration to total for baseline mode
+        if (baselinePauseStartTime > 0) {
+            baselinePausedDuration += Date.now() - baselinePauseStartTime;
+            baselinePauseStartTime = 0;
+        }
+
+        // Reset tracking lost state and hide overlay
+        if (gazeState.trackingLost) {
+            gazeState.trackingLost = false;
+            hideTrackingLostIndicator();
+        }
+
+        // Log resume event
+        if (dataLogger) {
+            dataLogger.logUIEvent('pause_off', {
+                was_paused_for: wasPausedFor,
+                resumed_by: reason,
+                line: gazeState.lastStablePosition.line,
+                word: gazeState.lastStablePosition.word,
+                mode: currentTrackingMode,
+                baseline_word_index: currentTrackingMode === TRACKING_MODES.BASELINE ? baselineWordIndex : null
+            });
+        }
+
+        // Update status indicator
+        updateStatusIndicator('Eye tracking active', false);
+
+        // Restart baseline interval if in baseline mode
+        if (currentTrackingMode === TRACKING_MODES.BASELINE) {
+            startBaselineMode();
+        }
+
+        console.log("GARB: Tracking resumed -", reason);
+    }
+
+    /**
+     * Switch tracking mode
+     * @param {string} mode - 'gaze', 'baseline', or 'none'
+     */
+    function setTrackingMode(mode) {
+        const oldMode = currentTrackingMode;
+
+        // Skip if already in this mode
+        if (oldMode === mode) {
+            console.log(`GARB: Already in ${mode} mode, skipping`);
+            return;
+        }
+
+        currentTrackingMode = mode;
+        console.log(`GARB: Switching mode from ${oldMode} to ${mode}`);
+
+        // CRITICAL: Update data-mode attribute FIRST for immediate CSS change
+        document.body.dataset.mode = mode;
+
+        // Log mode change
+        if (dataLogger) {
+            dataLogger.logUIEvent('mode_change', {
+                from: oldMode,
+                to: mode
+            });
+        }
+
+        // Stop baseline interval if switching away from baseline
+        if (oldMode === TRACKING_MODES.BASELINE) {
+            stopBaselineMode();
+            // Track when we paused baseline so we can account for time in other modes
+            baselinePauseStartTime = Date.now();
+        }
+
+        // ALWAYS clear highlights when switching modes (so new colors show)
+        clearAllHighlighting();
+
+        // ========================================
+        // MODE TRANSITION HANDLING
+        // A→B: Sync baseline to gaze position (fresh calculation)
+        // B→A: Sync gaze to baseline position
+        // C→B: Resume baseline from where it was (add pause duration)
+        // ========================================
+
+        if (mode === TRACKING_MODES.BASELINE) {
+            if (oldMode === TRACKING_MODES.GAZE) {
+                // A→B: Sync baseline to current gaze position
+                // syncBaselineToGazePosition() does a FRESH calculation, no pause adjustment needed
+                syncBaselineToGazePosition();
+                baselinePauseStartTime = 0; // Clear any stale pause time
+            } else if (oldMode === TRACKING_MODES.NONE) {
+                // C→B: Resume baseline from where it was paused
+                // Account for time spent in Mode C
+                if (baselinePauseStartTime > 0 && baselineStartTime > 0) {
+                    baselinePausedDuration += Date.now() - baselinePauseStartTime;
+                    console.log(`GARB: Baseline resuming from Mode C, added pause: ${Date.now() - baselinePauseStartTime}ms`);
+                    baselinePauseStartTime = 0;
+                }
+            }
+            // null→B: Fresh start, startBaselineMode() handles initialization
+            startBaselineMode();
+        } else if (mode === TRACKING_MODES.GAZE) {
+            if (oldMode === TRACKING_MODES.BASELINE) {
+                // B→A: Sync gaze to baseline position
+                syncGazeToBaselinePosition();
+            }
+            // C→A or null→A: No sync needed, gaze will track from current eye position
+        }
+
+        // Update mode indicator in UI
+        updateModeIndicator(mode);
+    }
+
+    /**
+     * Sync baseline mode position to current gaze position
+     * Called when switching from Mode A (Gaze) to Mode B (Baseline)
+     */
+    function syncBaselineToGazePosition() {
+        const currentLine = gazeState.currentLockedLine;
+        const currentWord = gazeState.lastStablePosition ? gazeState.lastStablePosition.word : 0;
+
+        console.log(`GARB: Syncing baseline to gaze position - line ${currentLine}, word ${currentWord}`);
+
+        // Ensure baseline word map is built
+        if (!baselineInitialized || baselineWordMap.length === 0) {
+            buildBaselineWordMap();
+        }
+
+        // Find the baseline word index that matches the gaze position
+        let targetIndex = 0;
+        for (let i = 0; i < baselineWordMap.length; i++) {
+            const entry = baselineWordMap[i];
+            if (entry.line === currentLine && entry.wordIdx === currentWord) {
+                targetIndex = i;
+                break;
+            }
+            // If we pass the current line, use the last word of that line
+            if (entry.line > currentLine) {
+                targetIndex = Math.max(0, i - 1);
+                break;
+            }
+            // Keep track in case we reach the end
+            if (entry.line === currentLine) {
+                targetIndex = i;
+            }
+        }
+
+        baselineWordIndex = targetIndex;
+        // Reset the start time accounting for words already "read"
+        baselineStartTime = Date.now() - (targetIndex / (baselineWPM / 60) * 1000);
+        baselinePausedDuration = 0;
+
+        // Clear all highlights AFTER the current position so Mode B's highlights are visible
+        clearHighlightsAfterPosition(currentLine, currentWord);
+
+        console.log(`GARB: Baseline synced to word index ${targetIndex}`);
+    }
+
+    /**
+     * Clear all word/line highlights after a given position
+     * Used when switching from Mode A to Mode B to make B's new highlights visible
+     */
+    function clearHighlightsAfterPosition(lineNum, wordNum) {
+        const lines = document.querySelectorAll('.garb-line');
+
+        for (let i = 0; i < lines.length; i++) {
+            const words = lines[i].querySelectorAll('.garb-word');
+
+            if (i < lineNum) {
+                // Lines before current - keep all highlights
+                continue;
+            } else if (i === lineNum) {
+                // Current line - clear highlights after current word
+                for (let j = wordNum + 1; j < words.length; j++) {
+                    words[j].classList.remove('garb-word-read', 'garb-word-current');
+                }
+            } else {
+                // Lines after current - clear all highlights
+                lines[i].classList.remove('garb-line-active', 'garb-line-complete');
+                for (let j = 0; j < words.length; j++) {
+                    words[j].classList.remove('garb-word-read', 'garb-word-current');
+                }
+            }
+        }
+
+        console.log(`GARB: Cleared highlights after line ${lineNum}, word ${wordNum}`);
+    }
+
+    /**
+     * Sync gaze mode position to current baseline position
+     * Called when switching from Mode B (Baseline) to Mode A (Gaze)
+     */
+    function syncGazeToBaselinePosition() {
+        if (!baselineInitialized || baselineWordMap.length === 0 || baselineWordIndex < 0) {
+            console.log("GARB: No baseline position to sync from");
+            return;
+        }
+
+        // Get position from baseline
+        const currentEntry = baselineWordMap[Math.min(baselineWordIndex, baselineWordMap.length - 1)];
+        if (!currentEntry) return;
+
+        const targetLine = currentEntry.line;
+        const targetWord = currentEntry.wordIdx;
+
+        console.log(`GARB: Syncing gaze to baseline position - line ${targetLine}, word ${targetWord}`);
+
+        // Update gaze state to this position
+        gazeState.currentLockedLine = targetLine;
+        gazeState.lastStablePosition = {
+            line: targetLine,
+            word: targetWord
+        };
+        gazeState.lineStartTime = Date.now();
+        gazeState.candidateLine = null;
+        gazeState.candidateLineStartTime = 0;
+
+        // Update the visual highlighting to this position
+        const lines = document.querySelectorAll('.garb-line');
+        const targetLineEl = lines[targetLine];
+
+        if (targetLineEl) {
+            // Use applyWordHighlighting for consistent visual update
+            applyWordHighlighting(targetLineEl, targetLine, targetWord, targetWord);
+        }
+
+        // Mark all previous lines and words as read
+        for (let i = 0; i < targetLine && i < lines.length; i++) {
+            const words = lines[i].querySelectorAll('.garb-word');
+            lines[i].classList.add('garb-line-complete');
+            lines[i].classList.remove('garb-line-active');
+            for (let j = 0; j < words.length; j++) {
+                words[j].classList.add('garb-word-read');
+            }
+        }
+
+        console.log(`GARB: Gaze synced to line ${targetLine}, word ${targetWord}`);
+    }
+
+    /**
+     * Custom smooth scroll with configurable duration (slower than native smooth)
+     * @param {number} deltaY - Amount to scroll (positive = down, negative = up)
+     * @param {number} duration - Animation duration in ms
+     */
+    function smoothScrollBy(deltaY, duration = 400) {
+        const startY = window.scrollY;
+        const startTime = performance.now();
+
+        function animateScroll(currentTime) {
+            const elapsed = currentTime - startTime;
+            const progress = Math.min(elapsed / duration, 1);
+
+            // Ease-out cubic for smooth deceleration
+            const easeOut = 1 - Math.pow(1 - progress, 3);
+            const currentY = startY + (deltaY * easeOut);
+
+            window.scrollTo(0, currentY);
+
+            if (progress < 1) {
+                requestAnimationFrame(animateScroll);
+            }
+        }
+
+        requestAnimationFrame(animateScroll);
+    }
+
+    /**
+     * Clear all highlighting (for 'none' mode)
+     */
+    function clearAllHighlighting() {
+        // Remove active line highlighting
+        document.querySelectorAll('.garb-line-active').forEach(el => {
+            el.classList.remove('garb-line-active');
+        });
+
+        // Remove word highlighting (but keep 'read' state for progress tracking)
+        document.querySelectorAll('.garb-word-current').forEach(el => {
+            el.classList.remove('garb-word-current');
+        });
+
+        // Hide gaze bubble
+        if (gazeBubble) {
+            gazeBubble.style.opacity = '0';
+        }
+        if (gazeBubbleTrail) {
+            gazeBubbleTrail.style.opacity = '0';
+        }
+
+        // Reset display state
+        displayedCurrentLine = -1;
+        displayedCurrentWord = -1;
+    }
+
+    /**
+     * Clear all reading progress and reset to start fresh
+     * Called when user clicks "Clear Progress" button
+     */
+    function clearReadingProgress() {
+        console.log("GARB: Clearing all reading progress");
+
+        // Clear all visual highlights
+        document.querySelectorAll('.garb-line-active, .garb-line-complete').forEach(el => {
+            el.classList.remove('garb-line-active', 'garb-line-complete');
+        });
+        document.querySelectorAll('.garb-word-read, .garb-word-current').forEach(el => {
+            el.classList.remove('garb-word-read', 'garb-word-current');
+        });
+
+        // Reset gaze state
+        gazeState.currentLockedLine = -1;
+        gazeState.lastStablePosition = { line: 0, word: 0 };
+        gazeState.candidateLine = null;
+        gazeState.candidateLineStartTime = 0;
+        gazeState.lineStartTime = 0;
+        gazeState.lastValidGazeTime = Date.now();
+        gazeState.trackingLost = false;
+
+        // Reset display state
+        displayedCurrentLine = -1;
+        displayedCurrentWord = -1;
+        lastStableLineNum = -1;
+        lastStableWordIdx = -1;
+        stabilityCounter = 0;
+
+        // Reset word progress tracking
+        wordReadProgress = {};
+
+        // Reset baseline mode state
+        baselineWordIndex = 0;
+        baselineStartTime = Date.now();
+        baselinePausedDuration = 0;
+        baselinePauseStartTime = 0;
+
+        // Reset scroll state
+        scrollTriggerStartTime = 0;
+        scrollUpTriggerStartTime = 0;
+        lastScrollTime = 0;
+
+        // Scroll to top of article
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+
+        // Log the reset
+        if (dataLogger) {
+            dataLogger.logUIEvent('progress_cleared', {
+                mode: currentTrackingMode
+            });
+        }
+
+        console.log("GARB: Reading progress cleared - scroll to top");
+    }
+
+    /**
+     * Update mode indicator in the reader UI
+     */
+    function updateModeIndicator(mode) {
+        let modeText = '';
+        switch (mode) {
+            case TRACKING_MODES.GAZE:
+                modeText = 'Gaze Tracking';
+                break;
+            case TRACKING_MODES.BASELINE:
+                modeText = `Baseline (${baselineWPM} WPM)`;
+                break;
+            case TRACKING_MODES.NONE:
+                modeText = 'No Highlight';
+                break;
+            default:
+                modeText = 'Select Mode';
+                break;
+        }
+
+        // Update status if there's a mode indicator element
+        const modeIndicator = document.querySelector('.garb-mode-indicator');
+        if (modeIndicator) {
+            modeIndicator.textContent = modeText;
+            modeIndicator.className = `garb-mode-indicator garb-mode-${mode || 'none'}`;
+        }
+
+        // Update settings panel mode buttons - remove active from all if mode is null
+        document.querySelectorAll('.garb-mode-btn-compact').forEach(btn => {
+            btn.classList.toggle('active', mode !== null && btn.dataset.mode === mode);
+        });
     }
 
     /**
@@ -1447,6 +3697,22 @@
         }
     }
 
+    // Track the currently active line to clear it when switching
+    let currentActiveLineEl = null;
+
+    /**
+     * Clear active highlighting from all lines except the current one
+     */
+    function clearOtherActiveLines(exceptLineNum) {
+        const activeLines = document.querySelectorAll('.garb-line-active');
+        activeLines.forEach(line => {
+            const num = parseInt(line.dataset.line);
+            if (num !== exceptLineNum) {
+                line.classList.remove('garb-line-active');
+            }
+        });
+    }
+
     /**
      * Apply word-by-word highlighting
      * @param {Element} lineEl - The line element
@@ -1463,10 +3729,17 @@
             currentWordIdx = readUpToWordIdx;
         }
 
-        // Create gaze bubble if it doesn't exist
-        // if (!gazeBubble) {
-        //     createGazeBubble();
-        // }
+        // Clear active highlighting from other lines - only one line should be active at a time
+        clearOtherActiveLines(lineNum);
+
+        // Update current active line reference
+        if (currentActiveLineEl && currentActiveLineEl !== lineEl) {
+            // Remove active from old line (unless it's complete)
+            if (!currentActiveLineEl.classList.contains('garb-line-complete')) {
+                currentActiveLineEl.classList.remove('garb-line-active');
+            }
+        }
+        currentActiveLineEl = lineEl;
 
         words.forEach((wordEl, idx) => {
             if (idx <= readUpToWordIdx) {
@@ -1488,5 +3761,418 @@
             lineEl.classList.remove('garb-line-active');
         }
     }
+
+    // ========================================
+    // SURVEY MODAL FOR SUBJECTIVE MEASURES
+    // ========================================
+
+    /**
+     * NASA-TLX Questions
+     */
+    const NASA_TLX_QUESTIONS = [
+        {
+            id: 'mental_demand',
+            label: 'Mental Demand',
+            description: 'How mentally demanding was the task?',
+            lowLabel: 'Very Low',
+            highLabel: 'Very High'
+        },
+        {
+            id: 'physical_demand',
+            label: 'Physical Demand',
+            description: 'How physically demanding was the task?',
+            lowLabel: 'Very Low',
+            highLabel: 'Very High'
+        },
+        {
+            id: 'temporal_demand',
+            label: 'Temporal Demand',
+            description: 'How hurried or rushed was the pace of the task?',
+            lowLabel: 'Very Low',
+            highLabel: 'Very High'
+        },
+        {
+            id: 'performance',
+            label: 'Performance',
+            description: 'How successful were you in accomplishing what you were asked to do?',
+            lowLabel: 'Perfect',
+            highLabel: 'Failure'
+        },
+        {
+            id: 'effort',
+            label: 'Effort',
+            description: 'How hard did you have to work to accomplish your level of performance?',
+            lowLabel: 'Very Low',
+            highLabel: 'Very High'
+        },
+        {
+            id: 'frustration',
+            label: 'Frustration',
+            description: 'How insecure, discouraged, irritated, stressed, and annoyed were you?',
+            lowLabel: 'Very Low',
+            highLabel: 'Very High'
+        }
+    ];
+
+    /**
+     * SUS Questions (System Usability Scale)
+     */
+    const SUS_QUESTIONS = [
+        'I think that I would like to use GARB frequently.',
+        'I found GARB unnecessarily complex.',
+        'I thought GARB was easy to use.',
+        'I think that I would need the support of a technical person to use GARB.',
+        'I found the various functions in GARB were well integrated.',
+        'I thought there was too much inconsistency in GARB.',
+        'I would imagine that most people would learn to use GARB very quickly.',
+        'I found GARB very cumbersome to use.',
+        'I felt very confident using GARB.',
+        'I needed to learn a lot of things before I could get going with GARB.'
+    ];
+
+    /**
+     * Custom GARB Scale Questions
+     */
+    const GARB_CUSTOM_QUESTIONS = [
+        { id: 'helped_keep_place', text: 'The highlighting helped me keep my place while reading.' },
+        { id: 'reduced_rereading', text: 'I had to re-read less often with the eye tracking active.' },
+        { id: 'felt_natural', text: 'The tracking felt natural and unobtrusive.' },
+        { id: 'tracking_accuracy', text: 'The tracking accurately followed where I was reading.' },
+        { id: 'would_use_again', text: 'I would use this extension again for reading.' }
+    ];
+
+    // Survey state
+    let surveyModal = null;
+    let surveyResponses = {
+        nasa_tlx: {},
+        sus: { responses: [] },
+        custom_garb: {}
+    };
+    let currentSurveySection = 0;
+    let currentQuestionIndex = 0;
+
+    /**
+     * Open the survey modal
+     */
+    function openSurveyModal() {
+        if (surveyModal) return;
+
+        // Reset survey state
+        surveyResponses = {
+            nasa_tlx: {},
+            sus: { responses: new Array(10).fill(null) },
+            custom_garb: {}
+        };
+        currentSurveySection = 0;
+        currentQuestionIndex = 0;
+
+        // Create modal overlay
+        surveyModal = document.createElement('div');
+        surveyModal.className = 'garb-modal-overlay';
+
+        renderSurveyContent();
+        document.body.appendChild(surveyModal);
+    }
+
+    /**
+     * Close the survey modal
+     */
+    function closeSurveyModal() {
+        if (surveyModal) {
+            surveyModal.remove();
+            surveyModal = null;
+        }
+    }
+
+    /**
+     * Render current survey content
+     */
+    function renderSurveyContent() {
+        if (!surveyModal) return;
+
+        let content = '';
+        let title = '';
+        let subtitle = '';
+        let totalQuestions = 0;
+        let currentQuestion = 0;
+
+        if (currentSurveySection === 0) {
+            // NASA-TLX
+            title = 'NASA Task Load Index';
+            subtitle = 'Rate your experience on each dimension';
+            totalQuestions = NASA_TLX_QUESTIONS.length;
+            currentQuestion = currentQuestionIndex + 1;
+
+            const q = NASA_TLX_QUESTIONS[currentQuestionIndex];
+            const currentValue = surveyResponses.nasa_tlx[q.id] || 50;
+
+            content = `
+                <div class="garb-survey-question">
+                    <p class="garb-survey-prompt">${q.description}</p>
+                    <div class="garb-tlx-scale">
+                        <input type="range" class="garb-tlx-slider" id="tlx-slider"
+                            min="0" max="100" step="5" value="${currentValue}">
+                        <div class="garb-tlx-value" id="tlx-value">${currentValue}</div>
+                        <div class="garb-tlx-labels">
+                            <span>${q.lowLabel}</span>
+                            <span>${q.highLabel}</span>
+                        </div>
+                    </div>
+                </div>
+            `;
+        } else if (currentSurveySection === 1) {
+            // SUS
+            title = 'System Usability Scale';
+            subtitle = 'Rate your agreement with each statement';
+            totalQuestions = SUS_QUESTIONS.length;
+            currentQuestion = currentQuestionIndex + 1;
+
+            const questionText = SUS_QUESTIONS[currentQuestionIndex];
+            const currentValue = surveyResponses.sus.responses[currentQuestionIndex];
+
+            content = `
+                <div class="garb-survey-question">
+                    <p class="garb-survey-prompt">${questionText}</p>
+                    <div class="garb-likert-scale">
+                        ${[1,2,3,4,5].map(n => `
+                            <label class="garb-likert-option">
+                                <input type="radio" name="sus-q" value="${n}" ${currentValue === n ? 'checked' : ''}>
+                                <div class="garb-likert-circle">${n}</div>
+                            </label>
+                        `).join('')}
+                    </div>
+                    <div class="garb-likert-labels">
+                        <span>Strongly Disagree</span>
+                        <span>Strongly Agree</span>
+                    </div>
+                </div>
+            `;
+        } else if (currentSurveySection === 2) {
+            // Custom GARB Scale
+            title = 'Reading Experience';
+            subtitle = 'Rate your agreement with each statement';
+            totalQuestions = GARB_CUSTOM_QUESTIONS.length;
+            currentQuestion = currentQuestionIndex + 1;
+
+            const q = GARB_CUSTOM_QUESTIONS[currentQuestionIndex];
+            const currentValue = surveyResponses.custom_garb[q.id];
+
+            content = `
+                <div class="garb-survey-question">
+                    <p class="garb-survey-prompt">${q.text}</p>
+                    <div class="garb-likert-scale">
+                        ${[1,2,3,4,5,6,7].map(n => `
+                            <label class="garb-likert-option">
+                                <input type="radio" name="garb-q" value="${n}" ${currentValue === n ? 'checked' : ''}>
+                                <div class="garb-likert-circle">${n}</div>
+                            </label>
+                        `).join('')}
+                    </div>
+                    <div class="garb-likert-labels">
+                        <span>Strongly Disagree</span>
+                        <span>Strongly Agree</span>
+                    </div>
+                </div>
+            `;
+        } else {
+            // Survey complete
+            title = 'Thank You!';
+            subtitle = 'Your responses have been recorded';
+
+            content = `
+                <div style="text-align: center; padding: 40px 0;">
+                    <div style="font-size: 48px; margin-bottom: 20px;">✓</div>
+                    <p style="color: var(--text-muted);">Your feedback helps improve GARB for future users.</p>
+                </div>
+            `;
+        }
+
+        // Calculate overall progress
+        const totalAll = NASA_TLX_QUESTIONS.length + SUS_QUESTIONS.length + GARB_CUSTOM_QUESTIONS.length;
+        let completedAll = Object.keys(surveyResponses.nasa_tlx).length +
+                          surveyResponses.sus.responses.filter(v => v !== null).length +
+                          Object.keys(surveyResponses.custom_garb).length;
+        const progressPercent = Math.round((completedAll / totalAll) * 100);
+
+        surveyModal.innerHTML = `
+            <div class="garb-modal">
+                <div class="garb-modal-header">
+                    <h2 class="garb-modal-title">${title}</h2>
+                    <p class="garb-modal-subtitle">${subtitle}</p>
+                </div>
+                <div class="garb-modal-body">
+                    ${content}
+                </div>
+                <div class="garb-modal-footer">
+                    <div class="garb-survey-progress">
+                        <div class="garb-survey-progress-bar">
+                            <div class="garb-survey-progress-fill" style="width: ${progressPercent}%"></div>
+                        </div>
+                        <span>${progressPercent}% complete</span>
+                    </div>
+                    <div>
+                        ${currentSurveySection < 3 ? `
+                            <button class="garb-btn garb-btn-primary" id="survey-next">
+                                ${currentSurveySection === 2 && currentQuestionIndex === GARB_CUSTOM_QUESTIONS.length - 1 ? 'Finish' : 'Next'}
+                            </button>
+                        ` : `
+                            <button class="garb-btn garb-btn-primary" id="survey-close">Close</button>
+                        `}
+                    </div>
+                </div>
+            </div>
+        `;
+
+        // Add event listeners
+        setTimeout(() => {
+            // TLX slider
+            const tlxSlider = surveyModal.querySelector('#tlx-slider');
+            if (tlxSlider) {
+                tlxSlider.addEventListener('input', (e) => {
+                    const value = e.target.value;
+                    surveyModal.querySelector('#tlx-value').textContent = value;
+                    surveyResponses.nasa_tlx[NASA_TLX_QUESTIONS[currentQuestionIndex].id] = parseInt(value);
+                });
+            }
+
+            // SUS radio buttons
+            const susRadios = surveyModal.querySelectorAll('input[name="sus-q"]');
+            susRadios.forEach(radio => {
+                radio.addEventListener('change', (e) => {
+                    surveyResponses.sus.responses[currentQuestionIndex] = parseInt(e.target.value);
+                });
+            });
+
+            // Custom GARB radio buttons
+            const garbRadios = surveyModal.querySelectorAll('input[name="garb-q"]');
+            garbRadios.forEach(radio => {
+                radio.addEventListener('change', (e) => {
+                    surveyResponses.custom_garb[GARB_CUSTOM_QUESTIONS[currentQuestionIndex].id] = parseInt(e.target.value);
+                });
+            });
+
+            // Next button
+            const nextBtn = surveyModal.querySelector('#survey-next');
+            if (nextBtn) {
+                nextBtn.addEventListener('click', handleSurveyNext);
+            }
+
+            // Close button
+            const closeBtn = surveyModal.querySelector('#survey-close');
+            if (closeBtn) {
+                closeBtn.addEventListener('click', () => {
+                    saveSurveyResponses();
+                    closeSurveyModal();
+                });
+            }
+        }, 0);
+    }
+
+    /**
+     * Handle next button click in survey
+     */
+    function handleSurveyNext() {
+        // Save current response if NASA-TLX (slider has default)
+        if (currentSurveySection === 0) {
+            const q = NASA_TLX_QUESTIONS[currentQuestionIndex];
+            if (!surveyResponses.nasa_tlx[q.id]) {
+                surveyResponses.nasa_tlx[q.id] = 50; // Default to middle
+            }
+        }
+
+        // Advance to next question
+        if (currentSurveySection === 0) {
+            if (currentQuestionIndex < NASA_TLX_QUESTIONS.length - 1) {
+                currentQuestionIndex++;
+            } else {
+                currentSurveySection = 1;
+                currentQuestionIndex = 0;
+            }
+        } else if (currentSurveySection === 1) {
+            if (currentQuestionIndex < SUS_QUESTIONS.length - 1) {
+                currentQuestionIndex++;
+            } else {
+                currentSurveySection = 2;
+                currentQuestionIndex = 0;
+            }
+        } else if (currentSurveySection === 2) {
+            if (currentQuestionIndex < GARB_CUSTOM_QUESTIONS.length - 1) {
+                currentQuestionIndex++;
+            } else {
+                currentSurveySection = 3; // Complete
+                saveSurveyResponses();
+            }
+        }
+
+        renderSurveyContent();
+    }
+
+    /**
+     * Calculate SUS score (0-100)
+     */
+    function calculateSUSScore(responses) {
+        if (responses.length !== 10 || responses.some(r => r === null)) {
+            return null;
+        }
+
+        let score = 0;
+        for (let i = 0; i < 10; i++) {
+            if (i % 2 === 0) {
+                // Odd items (1,3,5,7,9 in 1-indexed) - positive
+                score += responses[i] - 1;
+            } else {
+                // Even items (2,4,6,8,10 in 1-indexed) - negative
+                score += 5 - responses[i];
+            }
+        }
+        return score * 2.5;
+    }
+
+    /**
+     * Calculate NASA-TLX raw score
+     */
+    function calculateNASATLXScore(responses) {
+        const values = Object.values(responses);
+        if (values.length !== 6) return null;
+        return Math.round(values.reduce((a, b) => a + b, 0) / 6);
+    }
+
+    /**
+     * Save survey responses to the session
+     */
+    function saveSurveyResponses() {
+        // Calculate scores
+        surveyResponses.nasa_tlx.raw_score = calculateNASATLXScore(surveyResponses.nasa_tlx);
+        surveyResponses.sus.score = calculateSUSScore(surveyResponses.sus.responses);
+
+        // Send to background script for saving
+        safeSendMessage({
+            contentScriptQuery: 'saveSurveyResponses',
+            data: {
+                user: window.currentUser,
+                url: window.targetSiteURL,
+                survey_responses: surveyResponses,
+                survey_completed_at: Date.now()
+            }
+        });
+
+        console.log('Survey responses saved:', surveyResponses);
+    }
+
+    // Listen for survey trigger from popup
+    try {
+        chrome.runtime.onMessage.addListener(function(request, sender, sendResponse) {
+            if (request.action === 'openSurvey') {
+                openSurveyModal();
+                sendResponse({ success: true });
+            }
+            return true;
+        });
+    } catch (e) {
+        // Extension context may be invalid
+    }
+
+    // Expose survey function globally for testing
+    window.openGARBSurvey = openSurveyModal;
 
 })();

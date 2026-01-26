@@ -3,7 +3,14 @@
  * Handles consent, authentication, eye tracking activation, and data export
  */
 
-let currentMode = 1;
+// Tracking modes for research conditions
+const TRACKING_MODES = {
+    GAZE: 'gaze',       // Mode A: Eye tracker drives highlight
+    BASELINE: 'baseline', // Mode B: Viewport center drives highlight
+    NONE: 'none'        // Mode C: No highlighting
+};
+
+let currentMode = null; // Default to null - user must explicitly select a mode
 let isActivated = false;
 let participantId = null;
 
@@ -11,6 +18,8 @@ let participantId = null;
 document.addEventListener('DOMContentLoaded', function() {
     // Check consent state first
     checkConsentState();
+
+    // Note: We don't load saved mode on startup - user must explicitly select a mode each session
 
     // Consent checkbox enables/disables consent button
     document.getElementById('consentCheckbox').addEventListener('change', function() {
@@ -28,13 +37,10 @@ document.addEventListener('DOMContentLoaded', function() {
     // Activation/Deactivation toggle
     document.getElementById('extActivateButton').addEventListener('click', toggleTracking);
 
-    // Mode selection
-    document.getElementById('mode1').addEventListener('click', () => changeMode(1));
-    document.getElementById('mode2').addEventListener('click', () => changeMode(2));
-
     // Footer actions
     document.getElementById('exportDataBtn').addEventListener('click', exportData);
     document.getElementById('revokeConsentBtn').addEventListener('click', revokeConsent);
+    document.getElementById('completeSurveyBtn').addEventListener('click', openSurvey);
 
     // Allow Enter key to submit login form
     document.getElementById('password').addEventListener('keypress', function(e) {
@@ -174,6 +180,34 @@ async function exportData() {
 }
 
 /**
+ * Open the survey modal in the active tab
+ */
+async function openSurvey() {
+    try {
+        const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+
+        if (!tab) {
+            showMessage("No active tab found", 'error');
+            return;
+        }
+
+        // Check if this is the reader view (GARB is active)
+        try {
+            const response = await chrome.tabs.sendMessage(tab.id, { action: "openSurvey" });
+            if (response && response.success) {
+                // Close the popup to let user see the survey
+                window.close();
+            }
+        } catch (error) {
+            showMessage("Please activate eye tracking first and read an article before completing the survey.", 'error');
+        }
+    } catch (error) {
+        console.error("Survey error:", error);
+        showMessage("Could not open survey. Please try again.", 'error');
+    }
+}
+
+/**
  * Check if tracking is active on the current tab
  */
 async function checkTrackingStatus() {
@@ -207,14 +241,14 @@ async function checkTrackingStatus() {
 function updateActivateButton(active) {
     const btn = document.getElementById('extActivateButton');
     if (active) {
-        btn.textContent = 'Stop Tracking';
-        btn.classList.remove('btn-success');
+        btn.textContent = 'Stop';
+        btn.classList.remove('btn-primary');
         btn.classList.add('btn-danger');
         btn.disabled = false;
     } else {
-        btn.textContent = 'Activate Eye Tracking';
+        btn.textContent = 'Start Tracking';
         btn.classList.remove('btn-danger', 'btn-secondary');
-        btn.classList.add('btn-success');
+        btn.classList.add('btn-primary');
         btn.disabled = false;
     }
 }
@@ -278,10 +312,13 @@ async function activateExtension() {
             throw new Error("Cannot activate on browser internal pages");
         }
 
-        // Try to send message to content script
+        // Try to send message to content script with the selected mode
         let response;
+        const activationMessage = { action: "activate", mode: currentMode };
+        console.log("Activating with mode:", currentMode);
+
         try {
-            response = await chrome.tabs.sendMessage(tab.id, { action: "activate" });
+            response = await chrome.tabs.sendMessage(tab.id, activationMessage);
         } catch (sendError) {
             // Content script might not be injected yet, try injecting it
             console.log("Content script not responding, attempting to inject...");
@@ -295,8 +332,8 @@ async function activateExtension() {
                 // Wait a moment for script to initialize
                 await new Promise(resolve => setTimeout(resolve, 100));
 
-                // Try again
-                response = await chrome.tabs.sendMessage(tab.id, { action: "activate" });
+                // Try again with mode
+                response = await chrome.tabs.sendMessage(tab.id, activationMessage);
             } catch (injectError) {
                 console.error("Failed to inject content script:", injectError);
                 throw new Error("Could not inject content script. Try refreshing the page.");
@@ -320,18 +357,19 @@ async function activateExtension() {
 }
 
 /**
- * Change the visualization mode
+ * Load saved tracking mode from storage
+ * Mode is applied when activating eye tracking
  */
-function changeMode(mode) {
-    currentMode = mode;
-    console.log("Changing mode to:", mode);
-
-    // Update UI to show active mode
-    document.querySelectorAll('.mode-btn').forEach(btn => btn.classList.remove('active'));
-    document.getElementById('mode' + mode).classList.add('active');
-
-    // Send mode to background/content script
-    chrome.runtime.sendMessage({ action: "sendMode", mode: mode });
+async function loadSavedMode() {
+    try {
+        const data = await chrome.storage.local.get(['trackingMode']);
+        if (data.trackingMode) {
+            currentMode = data.trackingMode;
+            console.log("Loaded saved mode:", currentMode);
+        }
+    } catch (error) {
+        console.error("Error loading saved mode:", error);
+    }
 }
 
 /**

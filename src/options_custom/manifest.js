@@ -1,134 +1,278 @@
-// SAMPLE
+// GARB Extension Settings Manifest
 this.manifest = {
-    "name": "My Extension",
+    "name": "GARB Settings",
     "icon": "icon.png",
     "settings": [
+        // ========== APPEARANCE TAB ==========
         {
-            "tab": i18n.get("information"),
-            "group": i18n.get("login"),
-            "name": "username",
-            "type": "text",
-            "label": i18n.get("username"),
-            "text": i18n.get("x-characters")
-        },
-        {
-            "tab": i18n.get("information"),
-            "group": i18n.get("login"),
-            "name": "password",
-            "type": "text",
-            "label": i18n.get("password"),
-            "text": i18n.get("x-characters-pw"),
-            "masked": true
-        },
-        {
-            "tab": i18n.get("information"),
-            "group": i18n.get("login"),
-            "name": "myDescription",
-            "type": "description",
-            "text": i18n.get("description")
-        },
-        {
-            "tab": i18n.get("information"),
-            "group": i18n.get("logout"),
-            "name": "myCheckbox",
-            "type": "checkbox",
-            "label": i18n.get("enable")
-        },
-        {
-            "tab": i18n.get("information"),
-            "group": i18n.get("logout"),
-            "name": "myButton",
-            "type": "button",
-            "label": i18n.get("disconnect"),
-            "text": i18n.get("logout")
-        },
-        {
-            "tab": "Details",
-            "group": "Sound",
-            "name": "noti_volume",
-            "type": "slider",
-            "label": "Notification volume:",
-            "max": 1,
-            "min": 0,
-            "step": 0.01,
-            "display": true,
-            "displayModifier": function (value) {
-                return (value * 100).floor() + "%";
+            "tab": "Appearance",
+            "group": "Highlight Color",
+            "name": "highlightColor",
+            "type": "popupButton",
+            "label": "Color preset:",
+            "options": {
+                "values": [
+                    { "value": "blue", "text": "Blue (Default)" },
+                    { "value": "green", "text": "Green" },
+                    { "value": "purple", "text": "Purple" },
+                    { "value": "orange", "text": "Orange" },
+                    { "value": "yellow", "text": "Yellow" },
+                    { "value": "pink", "text": "Pink" },
+                    { "value": "gray", "text": "Gray" }
+                ]
             }
         },
         {
-            "tab": "Details",
-            "group": "Sound",
-            "name": "sound_volume",
+            "tab": "Appearance",
+            "group": "Highlight Color",
+            "name": "customColorEnabled",
+            "type": "checkbox",
+            "label": "Use custom color"
+        },
+        {
+            "tab": "Appearance",
+            "group": "Highlight Color",
+            "name": "customColor",
+            "type": "text",
+            "label": "Custom color (hex):",
+            "text": "e.g., #3b82f6"
+        },
+        {
+            "tab": "Appearance",
+            "group": "Highlight Style",
+            "name": "highlightOpacity",
             "type": "slider",
-            "label": "Sound volume:",
+            "label": "Highlight opacity:",
             "max": 100,
-            "min": 0,
-            "step": 1,
+            "min": 10,
+            "step": 5,
             "display": true,
             "displayModifier": function (value) {
                 return value + "%";
             }
         },
         {
-            "tab": "Details",
-            "group": "Food",
-            "name": "myPopupButton",
-            "type": "popupButton",
-            "label": "Soup 1 should be:",
-            "options": {
-                "groups": [
-                    "Hot", "Cold",
-                ],
-                "values": [
-                    {
-                        "value": "hot",
-                        "text": "Very hot",
-                        "group": "Hot",
-                    },
-                    {
-                        "value": "Medium",
-                        "group": 1,
-                    },
-                    {
-                        "value": "Cold",
-                        "group": 2,
-                    },
-                    ["Non-existing"]
-                ],
-            },
+            "tab": "Appearance",
+            "group": "Highlight Style",
+            "name": "lineHighlightEnabled",
+            "type": "checkbox",
+            "label": "Show current line highlight"
         },
         {
-            "tab": "Details",
-            "group": "Food",
-            "name": "myListBox",
-            "type": "listBox",
-            "label": "Soup 2 should be:",
-            "options": [
-                ["hot", "Hot and yummy"],
-                ["cold"]
-            ]
+            "tab": "Appearance",
+            "group": "Gaze Indicator",
+            "name": "showGazeIndicator",
+            "type": "checkbox",
+            "label": "Show gaze position indicator"
         },
         {
-            "tab": "Details",
-            "group": "Food",
-            "name": "myRadioButtons",
-            "type": "radioButtons",
-            "label": "Soup 3 should be:",
-            "options": [
-                ["hot", "Hot and yummy"],
-                ["cold"]
-            ]
+            "tab": "Appearance",
+            "group": "Gaze Indicator",
+            "name": "gazeIndicatorSize",
+            "type": "slider",
+            "label": "Indicator size:",
+            "max": 60,
+            "min": 20,
+            "step": 5,
+            "display": true,
+            "displayModifier": function (value) {
+                return value + "px";
+            }
+        },
+
+        // ========== TRACKING TAB ==========
+        {
+            "tab": "Tracking",
+            "group": "Calibration Offset",
+            "name": "gazeYOffset",
+            "type": "slider",
+            "label": "Vertical offset (Y):",
+            "max": 100,
+            "min": -100,
+            "step": 5,
+            "display": true,
+            "displayModifier": function (value) {
+                return value + "px";
+            }
+        },
+        {
+            "tab": "Tracking",
+            "group": "Calibration Offset",
+            "name": "gazeXOffset",
+            "type": "slider",
+            "label": "Horizontal offset (X):",
+            "max": 100,
+            "min": -100,
+            "step": 5,
+            "display": true,
+            "displayModifier": function (value) {
+                return value + "px";
+            }
+        },
+        {
+            "tab": "Tracking",
+            "group": "Calibration Offset",
+            "name": "offsetDescription",
+            "type": "description",
+            "text": "Adjust these values if the highlight consistently appears above/below or left/right of where you're looking."
+        },
+        {
+            "tab": "Tracking",
+            "group": "Line Lock Sensitivity",
+            "name": "lineLockTime",
+            "type": "slider",
+            "label": "Lock time:",
+            "max": 500,
+            "min": 100,
+            "step": 25,
+            "display": true,
+            "displayModifier": function (value) {
+                return value + "ms";
+            }
+        },
+        {
+            "tab": "Tracking",
+            "group": "Line Lock Sensitivity",
+            "name": "lineLockMargin",
+            "type": "slider",
+            "label": "Switch margin:",
+            "max": 80,
+            "min": 20,
+            "step": 5,
+            "display": true,
+            "displayModifier": function (value) {
+                return value + "px";
+            }
+        },
+        {
+            "tab": "Tracking",
+            "group": "Line Lock Sensitivity",
+            "name": "sensitivityDescription",
+            "type": "description",
+            "text": "Lock time: how long gaze must stay on new line before switching. Switch margin: instant switch if new line wins by this many pixels."
+        },
+
+        // ========== BEHAVIOR TAB ==========
+        {
+            "tab": "Behavior",
+            "group": "Auto-Scroll",
+            "name": "autoScrollEnabled",
+            "type": "checkbox",
+            "label": "Enable auto-scroll"
+        },
+        {
+            "tab": "Behavior",
+            "group": "Auto-Scroll",
+            "name": "autoScrollSpeed",
+            "type": "slider",
+            "label": "Scroll speed:",
+            "max": 200,
+            "min": 50,
+            "step": 10,
+            "display": true,
+            "displayModifier": function (value) {
+                return value + "px/s";
+            }
+        },
+        {
+            "tab": "Behavior",
+            "group": "Auto-Scroll",
+            "name": "scrollMargin",
+            "type": "slider",
+            "label": "Scroll trigger margin:",
+            "max": 200,
+            "min": 50,
+            "step": 10,
+            "display": true,
+            "displayModifier": function (value) {
+                return value + "px";
+            }
+        },
+        {
+            "tab": "Behavior",
+            "group": "Tracking Lost",
+            "name": "trackingLostThreshold",
+            "type": "slider",
+            "label": "Tracking lost threshold:",
+            "max": 5000,
+            "min": 1000,
+            "step": 250,
+            "display": true,
+            "displayModifier": function (value) {
+                return (value / 1000).toFixed(1) + "s";
+            }
+        },
+        {
+            "tab": "Behavior",
+            "group": "Tracking Lost",
+            "name": "showResumeMarker",
+            "type": "checkbox",
+            "label": "Show resume marker when tracking lost"
+        },
+
+        // ========== ADVANCED TAB ==========
+        {
+            "tab": "Advanced",
+            "group": "Smoothing",
+            "name": "smoothingAlpha",
+            "type": "slider",
+            "label": "EMA smoothing factor:",
+            "max": 0.8,
+            "min": 0.1,
+            "step": 0.05,
+            "display": true,
+            "displayModifier": function (value) {
+                return value.toFixed(2);
+            }
+        },
+        {
+            "tab": "Advanced",
+            "group": "Smoothing",
+            "name": "smoothingDescription",
+            "type": "description",
+            "text": "Lower values = more smoothing (less jitter, more lag). Higher values = less smoothing (more responsive, more jitter)."
+        },
+        {
+            "tab": "Advanced",
+            "group": "Fixation Detection",
+            "name": "fixationVelocityThreshold",
+            "type": "slider",
+            "label": "Velocity threshold:",
+            "max": 60,
+            "min": 10,
+            "step": 5,
+            "display": true,
+            "displayModifier": function (value) {
+                return value + "px/sample";
+            }
+        },
+        {
+            "tab": "Advanced",
+            "group": "Fixation Detection",
+            "name": "fixationMinDuration",
+            "type": "slider",
+            "label": "Minimum fixation duration:",
+            "max": 200,
+            "min": 50,
+            "step": 10,
+            "display": true,
+            "displayModifier": function (value) {
+                return value + "ms";
+            }
+        },
+        {
+            "tab": "Advanced",
+            "group": "Reset",
+            "name": "resetButton",
+            "type": "button",
+            "label": "Reset all settings:",
+            "text": "Reset to Defaults"
         }
     ],
     "alignment": [
-        [
-            "username",
-            "password"
-        ],
-        [
-            "noti_volume",
-            "sound_volume"
-        ]
+        ["gazeYOffset", "gazeXOffset"],
+        ["lineLockTime", "lineLockMargin"],
+        ["autoScrollSpeed", "scrollMargin"],
+        ["fixationVelocityThreshold", "fixationMinDuration"]
     ]
 };
