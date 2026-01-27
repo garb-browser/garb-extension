@@ -14,6 +14,10 @@ let currentMode = null; // Default to null - user must explicitly select a mode
 let isActivated = false;
 let participantId = null;
 
+// Device management
+let availableDevices = [];
+let selectedDevice = null;
+
 // Initialize when DOM is ready
 document.addEventListener('DOMContentLoaded', function() {
     // Check consent state first
@@ -48,6 +52,9 @@ document.addEventListener('DOMContentLoaded', function() {
             signinUser();
         }
     });
+
+    // Initialize device selection
+    initDeviceSelection();
 
     // Check if tracking is already active on current tab
     checkTrackingStatus();
@@ -312,10 +319,19 @@ async function activateExtension() {
             throw new Error("Cannot activate on browser internal pages");
         }
 
-        // Try to send message to content script with the selected mode
+        // Check if a device is selected
+        if (!selectedDevice) {
+            throw new Error("Please select an eye tracker device first");
+        }
+
+        // Try to send message to content script with the selected mode and device
         let response;
-        const activationMessage = { action: "activate", mode: currentMode };
-        console.log("Activating with mode:", currentMode);
+        const activationMessage = {
+            action: "activate",
+            mode: currentMode,
+            device: selectedDevice  // Include device info for inject.js
+        };
+        console.log("Activating with mode:", currentMode, "device:", selectedDevice.DeviceName);
 
         try {
             response = await chrome.tabs.sendMessage(tab.id, activationMessage);
@@ -484,8 +500,11 @@ async function updateRender() {
             document.getElementById("login2").style.display = "block";
             document.getElementById("displayUsername").textContent = user || "User";
 
+            // Detect available eye tracker devices
+            detectDevices();
+
             if (!isActivated) {
-                updateStatus('disconnected', 'Ready - click Activate');
+                updateStatus('disconnected', 'Ready - select device and activate');
             }
         } else {
             document.getElementById("login").style.display = "block";
@@ -524,4 +543,240 @@ function clearMessage() {
     const messageEl = document.getElementById('signInMessage');
     messageEl.textContent = '';
     messageEl.className = '';
+}
+
+// ============================================================================
+// DEVICE DETECTION AND SELECTION
+// ============================================================================
+
+/**
+ * Wait for the popup to be fully ready before making WebSocket connections.
+ * This is critical because Chrome extension popups need time to fully initialize,
+ * especially on first open when the background service worker may not be active.
+ */
+async function waitForPopupReady() {
+    // Simple approach: just wait a bit for the popup to stabilize
+    // Complex approaches (requestIdleCallback, requestAnimationFrame) don't work reliably in popup context
+    await new Promise(resolve => setTimeout(resolve, 200));
+    console.log('[Devices] Popup ready after 200ms delay');
+}
+
+/**
+ * Detect available eye tracker devices via WebSocket connection to events service
+ * Includes retry logic with delay for USB device enumeration
+ */
+async function detectDevices(retryCount = 0) {
+    const deviceSelect = document.getElementById('deviceSelect');
+    const deviceInfo = document.getElementById('deviceInfo');
+    const activateBtn = document.getElementById('extActivateButton');
+    const maxRetries = 2;
+
+    // Defensive check - ensure DOM elements exist
+    if (!deviceSelect || !deviceInfo || !activateBtn) {
+        console.error('[Devices] DOM elements not found, retrying in 100ms...');
+        await new Promise(resolve => setTimeout(resolve, 100));
+        return detectDevices(retryCount);
+    }
+
+    console.log(`[Devices] detectDevices called (retry: ${retryCount}), select visible: ${deviceSelect.offsetParent !== null}`);
+
+    // Reset state
+    deviceSelect.innerHTML = '<option value="">Detecting devices...</option>';
+    deviceSelect.disabled = true;
+    deviceInfo.innerHTML = '';
+    activateBtn.disabled = true;
+
+    // On first attempt, wait for popup to be fully ready before WebSocket connection
+    // This is the key fix for the "works on second click" issue
+    if (retryCount === 0) {
+        await waitForPopupReady();
+    }
+
+    try {
+        const devices = await queryDevices();
+        availableDevices = devices;
+
+        if (devices.length === 0) {
+            // Retry with delay if no devices found (USB enumeration might be slow)
+            if (retryCount < maxRetries) {
+                console.log(`[Devices] No devices found, retrying (${retryCount + 1}/${maxRetries})...`);
+                await new Promise(resolve => setTimeout(resolve, 500));
+                return detectDevices(retryCount + 1);
+            }
+            deviceSelect.innerHTML = '<option value="">No eye trackers found</option>';
+            deviceInfo.innerHTML = '<span class="device-features">Make sure the eye tracker service is running</span>';
+            return;
+        }
+
+        // Populate dropdown - use setTimeout to work around Chrome popup rendering quirks
+        deviceSelect.innerHTML = devices.map(d =>
+            `<option value="${d.DeviceId}">${d.DeviceName}</option>`
+        ).join('');
+        deviceSelect.disabled = false;
+
+        // Force immediate style recalculation
+        window.getComputedStyle(deviceSelect).display;
+
+        console.log(`[Devices] Populated dropdown with ${devices.length} device(s):`, devices);
+
+        // Load saved preference
+        try {
+            const saved = await chrome.storage.local.get(['selectedDeviceId']);
+            if (saved.selectedDeviceId) {
+                const savedDevice = devices.find(d => d.DeviceId === saved.selectedDeviceId);
+                if (savedDevice) {
+                    deviceSelect.value = saved.selectedDeviceId;
+                }
+            }
+        } catch (e) {
+            console.log("Could not load saved device preference");
+        }
+
+        // Use double setTimeout to ensure DOM rendering completes in popup
+        await new Promise(resolve => setTimeout(resolve, 0));
+        await new Promise(resolve => setTimeout(resolve, 50));
+
+        // Update device info display
+        updateDeviceInfo();
+        activateBtn.disabled = false;
+
+    } catch (error) {
+        console.error("[Devices] Detection failed:", error);
+        deviceSelect.innerHTML = '<option value="">Service not running</option>';
+        deviceInfo.innerHTML = '<span class="device-features">Start the GARB Eye Tracker service</span>';
+    }
+}
+
+/**
+ * Query available devices from the events service via WebSocket
+ */
+function queryDevices() {
+    return new Promise((resolve, reject) => {
+        // Try multiple connection URLs (same as inject.js)
+        const urls = [
+            'ws://127.0.0.1:8765/devices',
+            'ws://localhost:8765/devices'
+        ];
+
+        let currentUrlIndex = 0;
+        let finished = false;  // Prevents any further actions once resolved/rejected
+        const startTime = Date.now();
+
+        function tryConnect(url) {
+            if (finished) return;
+            console.log(`[Devices] Trying ${url} at +${Date.now() - startTime}ms...`);
+
+            let movedToNext = false;  // Prevents double-calling tryNextUrl for same connection
+            let ws;
+
+            try {
+                ws = new WebSocket(url);
+            } catch (e) {
+                console.error(`[Devices] WebSocket constructor failed:`, e);
+                tryNextUrl();
+                return;
+            }
+
+            ws.onopen = () => {
+                console.log(`[Devices] Connected to ${url} at +${Date.now() - startTime}ms`);
+            };
+
+            ws.onmessage = (event) => {
+                if (finished) return;
+                console.log(`[Devices] Message received at +${Date.now() - startTime}ms, length: ${event.data.length}`);
+                try {
+                    const devices = JSON.parse(event.data);
+                    console.log(`[Devices] Parsed ${devices.length} device(s):`, devices.map(d => d.DeviceName));
+                    finished = true;
+                    movedToNext = true;
+                    ws.close();
+                    resolve(devices);
+                } catch (e) {
+                    console.error("[Devices] Failed to parse response:", e);
+                    finished = true;
+                    reject(new Error("Invalid response from service"));
+                }
+            };
+
+            ws.onerror = () => {
+                console.log(`[Devices] WebSocket error at +${Date.now() - startTime}ms`);
+                // Don't call tryNextUrl here - onclose will fire after onerror
+                // and we'll handle it there to avoid double-calling
+            };
+
+            ws.onclose = (e) => {
+                console.log(`[Devices] WebSocket closed at +${Date.now() - startTime}ms, code: ${e.code}`);
+                // If closed before we got data and wasn't an intentional close, try next URL
+                if (!finished && !movedToNext && e.code !== 1000) {
+                    tryNextUrl();
+                }
+            };
+
+            function tryNextUrl() {
+                if (finished || movedToNext) return;
+                movedToNext = true;
+                currentUrlIndex++;
+                if (currentUrlIndex < urls.length) {
+                    console.log(`[Devices] Moving to next URL: ${urls[currentUrlIndex]}`);
+                    setTimeout(() => tryConnect(urls[currentUrlIndex]), 100);
+                } else {
+                    finished = true;
+                    reject(new Error("Could not connect to eye tracker service"));
+                }
+            }
+
+            // Timeout after 5 seconds (device enumeration can be slow)
+            setTimeout(() => {
+                if (!finished && !movedToNext) {
+                    console.log(`[Devices] Timeout on ${url} at +${Date.now() - startTime}ms, trying next...`);
+                    ws.close();
+                    tryNextUrl();
+                }
+            }, 5000);
+        }
+
+        tryConnect(urls[0]);
+    });
+}
+
+/**
+ * Update the device info display based on current selection
+ */
+function updateDeviceInfo() {
+    const select = document.getElementById('deviceSelect');
+    const deviceInfo = document.getElementById('deviceInfo');
+    const device = availableDevices.find(d => d.DeviceId === select.value);
+
+    if (!device) {
+        selectedDevice = null;
+        deviceInfo.innerHTML = '';
+        return;
+    }
+
+    selectedDevice = device;
+
+    // Recreate the badge and features elements (they may have been cleared)
+    const featuresText = device.DeviceType === 'Pro'
+        ? 'Pupil data, 3D eye position'
+        : 'Gaze position tracking';
+
+    deviceInfo.innerHTML = `
+        <span class="device-badge ${device.DeviceType.toLowerCase()}">${device.DeviceType}</span>
+        <span class="device-features">${featuresText}</span>
+    `;
+
+    // Save preference
+    chrome.storage.local.set({ selectedDeviceId: device.DeviceId });
+
+    console.log("[Devices] Selected:", device);
+}
+
+/**
+ * Initialize device selection event listener
+ */
+function initDeviceSelection() {
+    const deviceSelect = document.getElementById('deviceSelect');
+    if (deviceSelect) {
+        deviceSelect.addEventListener('change', updateDeviceInfo);
+    }
 }

@@ -325,6 +325,78 @@
       opacity: 0.8;
     }
 
+    /* Device selection */
+    .device-section {
+      background: white;
+      padding: 12px 14px;
+      border-radius: 10px;
+      margin-bottom: 14px;
+    }
+
+    .device-select {
+      width: 100%;
+      padding: 10px 12px;
+      border: 1px solid #d2d2d7;
+      border-radius: 8px;
+      font-size: 13px;
+      background: #f5f5f7;
+      color: #1d1d1f;
+      cursor: pointer;
+      transition: all 0.15s ease;
+      appearance: none;
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%2386868b' d='M6 8L2 4h8z'/%3E%3C/svg%3E");
+      background-repeat: no-repeat;
+      background-position: right 12px center;
+      padding-right: 32px;
+    }
+
+    .device-select:focus {
+      outline: none;
+      border-color: #86868b;
+      background-color: white;
+    }
+
+    .device-select:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+
+    .device-info {
+      margin-top: 8px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .device-info:empty {
+      display: none;
+    }
+
+    .device-badge {
+      display: inline-block;
+      padding: 3px 8px;
+      border-radius: 4px;
+      font-weight: 500;
+      font-size: 10px;
+      text-transform: uppercase;
+      letter-spacing: 0.3px;
+    }
+
+    .device-badge.pro {
+      background: #007aff;
+      color: white;
+    }
+
+    .device-badge.consumer {
+      background: #34c759;
+      color: white;
+    }
+
+    .device-features {
+      font-size: 11px;
+      color: #86868b;
+    }
+
     /* Logged in view */
     #login2 {
       display: none;
@@ -529,6 +601,20 @@
         <div class="user-info">
           <span class="username" id="displayUsername">User</span>
           <button id="signout" class="btn btn-secondary">Sign Out</button>
+        </div>
+
+        <!-- Eye Tracker Device Selection -->
+        <div id="deviceSection" class="device-section">
+          <div class="form-group">
+            <label for="deviceSelect">Eye Tracker</label>
+            <select id="deviceSelect" class="device-select">
+              <option value="">Detecting devices...</option>
+            </select>
+          </div>
+          <div id="deviceInfo" class="device-info">
+            <span class="device-badge" id="deviceTypeBadge"></span>
+            <span class="device-features" id="deviceFeatures"></span>
+          </div>
         </div>
 
         <div class="activate-section">

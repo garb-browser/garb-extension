@@ -34,6 +34,12 @@
         NONE: 'none'
     };
     let currentTrackingMode = null; // Default to null - user must explicitly select a mode
+
+    // ========================================
+    // EYE TRACKER DEVICE SELECTION
+    // ========================================
+    // Supports: Consumer (Eye Tracker 5) and Pro (Pro Nano, etc.)
+    let selectedDevice = null; // Device info from popup: { DeviceId, DeviceName, DeviceType, ... }
     let baselineUpdateInterval = null;
     const BASELINE_UPDATE_RATE_MS = 100; // Update baseline highlight every 100ms (smoother)
 
@@ -216,12 +222,29 @@
             // Ring buffer for gaze events (limit memory usage)
             // Reduced to prevent 413 Payload Too Large errors
             this.maxGazeEvents = 5000; // ~83 seconds at 60Hz
+
+            // Pro data tracking (pupil diameter, gaze origin)
+            this.proDataEnabled = false;
+            this.proDataSummary = {
+                has_pupil_data: false,
+                has_gaze_origin_data: false,
+                pupil_samples: 0,
+                avg_pupil_left_mm: 0,
+                avg_pupil_right_mm: 0,
+                pupil_left_sum: 0,
+                pupil_right_sum: 0
+            };
         }
 
         /**
          * Log a gaze event with fixation detection and data quality tracking
+         * @param {number} x - Gaze X coordinate (viewport)
+         * @param {number} y - Gaze Y coordinate (viewport)
+         * @param {number} confidence - Gaze confidence (0-1)
+         * @param {object} velocity - Velocity object { magnitude }
+         * @param {object} proData - Optional Pro data { pupilLeftDiameter, pupilRightDiameter, gazeOrigin*, validity }
          */
-        logGaze(x, y, confidence, velocity) {
+        logGaze(x, y, confidence, velocity, proData = null) {
             const now = Date.now();
             this.summary.total_gaze_samples++;
             this.actualSamples++;
@@ -273,6 +296,42 @@
                 gy: Math.round(y * 10) / 10,
                 conf: Math.round(confidence * 100) / 100,
             };
+
+            // Add extended Pro data if available
+            if (proData) {
+                this.proDataEnabled = true;
+
+                // Pupil diameter (mm)
+                if (proData.pupilLeftDiameter !== null && !isNaN(proData.pupilLeftDiameter)) {
+                    event.pupilL = Math.round(proData.pupilLeftDiameter * 100) / 100;
+                    this.proDataSummary.has_pupil_data = true;
+                    this.proDataSummary.pupil_left_sum += proData.pupilLeftDiameter;
+                }
+                if (proData.pupilRightDiameter !== null && !isNaN(proData.pupilRightDiameter)) {
+                    event.pupilR = Math.round(proData.pupilRightDiameter * 100) / 100;
+                    this.proDataSummary.pupil_right_sum += proData.pupilRightDiameter;
+                }
+                if (event.pupilL || event.pupilR) {
+                    this.proDataSummary.pupil_samples++;
+                }
+
+                // Gaze origin (3D eye position in track box coordinates)
+                if (proData.gazeOriginLeftZ !== null && !isNaN(proData.gazeOriginLeftZ)) {
+                    event.originLZ = Math.round(proData.gazeOriginLeftZ * 1000) / 1000;
+                    this.proDataSummary.has_gaze_origin_data = true;
+                }
+                if (proData.gazeOriginRightZ !== null && !isNaN(proData.gazeOriginRightZ)) {
+                    event.originRZ = Math.round(proData.gazeOriginRightZ * 1000) / 1000;
+                }
+
+                // Validity flags
+                if (proData.leftEyeValidity !== null) {
+                    event.validL = proData.leftEyeValidity;
+                }
+                if (proData.rightEyeValidity !== null) {
+                    event.validR = proData.rightEyeValidity;
+                }
+            }
 
             // Fixation detection (I-VT algorithm)
             const FIXATION_VELOCITY_THRESHOLD = 30; // px/sample
@@ -561,6 +620,14 @@
          * Get device and environment metadata for research paper reporting
          */
         getDeviceMetadata() {
+            // Calculate average pupil diameter if Pro data available
+            let avgPupilLeft = null;
+            let avgPupilRight = null;
+            if (this.proDataSummary.pupil_samples > 0) {
+                avgPupilLeft = Math.round((this.proDataSummary.pupil_left_sum / this.proDataSummary.pupil_samples) * 100) / 100;
+                avgPupilRight = Math.round((this.proDataSummary.pupil_right_sum / this.proDataSummary.pupil_samples) * 100) / 100;
+            }
+
             return {
                 // Screen info
                 screen_width: window.screen.width,
@@ -576,12 +643,26 @@
                 user_agent: navigator.userAgent,
                 platform: navigator.platform,
 
-                // Eye tracker info
-                eye_tracker_model: "Tobii Eye Tracker 5",
-                nominal_sampling_rate: 60, // Hz
+                // Eye tracker info (dynamic based on selected device)
+                eye_tracker_model: selectedDevice ? selectedDevice.DeviceName : "Tobii Eye Tracker 5",
+                eye_tracker_type: selectedDevice ? selectedDevice.DeviceType : "Consumer",
+                eye_tracker_device_id: selectedDevice ? selectedDevice.DeviceId : null,
+                nominal_sampling_rate: selectedDevice && selectedDevice.SamplingRate ? selectedDevice.SamplingRate : 60,
+
+                // Pro data availability
+                supports_pupil_data: selectedDevice ? selectedDevice.SupportsPupilData : false,
+                supports_gaze_origin: selectedDevice ? selectedDevice.SupportsGazeOrigin : false,
+                pro_data_enabled: this.proDataEnabled,
+
+                // Pro data summary (if available)
+                avg_pupil_left_mm: avgPupilLeft,
+                avg_pupil_right_mm: avgPupilRight,
+                has_gaze_origin_data: this.proDataSummary.has_gaze_origin_data,
 
                 // Calibration (Tobii native calibration)
-                calibration_method: "Tobii native 9-point",
+                calibration_method: selectedDevice && selectedDevice.DeviceType === 'Pro'
+                    ? "Tobii Pro Eye Tracker Manager"
+                    : "Tobii Experience 9-point",
             };
         }
 
@@ -662,6 +743,16 @@
                     originalPageURL = location.href;
 
                     isActivated = true;
+
+                    // Capture selected device from activation message
+                    if (request.device) {
+                        selectedDevice = request.device;
+                        console.log("GARB: Using device:", selectedDevice.DeviceName, "(", selectedDevice.DeviceType, ")");
+                    } else {
+                        // Default to consumer for backward compatibility
+                        selectedDevice = { DeviceId: 'tobii-consumer', DeviceName: 'Tobii Eye Tracker 5', DeviceType: 'Consumer' };
+                        console.log("GARB: No device specified, defaulting to Consumer");
+                    }
 
                     // Use mode from activation message if provided
                     // Check for explicit mode value (including null which means "no mode selected")
@@ -1712,11 +1803,28 @@
         if ("WebSocket" in window) {
             updateStatusIndicator("Connecting to eye tracker...");
 
-            tryConnect("ws://127.0.0.1:8765/hello", quadFreqs, dbQuadFreqs)
+            // Determine endpoint based on selected device
+            // New endpoint: /gaze?device=consumer|pro (with device selection)
+            // Legacy endpoint: /hello (backward compatible, Consumer only)
+            const deviceType = selectedDevice ? selectedDevice.DeviceType.toLowerCase() : 'consumer';
+            const newEndpoint = `/gaze?device=${deviceType}`;
+
+            console.log("GARB: Connecting with device type:", deviceType);
+
+            // Try new endpoint first, then legacy for backward compatibility
+            tryConnect(`ws://127.0.0.1:8765${newEndpoint}`, quadFreqs, dbQuadFreqs)
+                .catch(() => tryConnect(`ws://[::1]:8765${newEndpoint}`, quadFreqs, dbQuadFreqs))
+                .catch(() => tryConnect(`ws://localhost:8765${newEndpoint}`, quadFreqs, dbQuadFreqs))
+                // Fall back to legacy endpoint if new endpoint doesn't exist
+                .catch(() => {
+                    console.log("GARB: New endpoint not available, falling back to legacy /hello");
+                    return tryConnect("ws://127.0.0.1:8765/hello", quadFreqs, dbQuadFreqs);
+                })
                 .catch(() => tryConnect("ws://[::1]:8765/hello", quadFreqs, dbQuadFreqs))
                 .catch(() => tryConnect("ws://localhost:8765/hello", quadFreqs, dbQuadFreqs))
                 .then(() => {
-                    updateStatusIndicator("Eye tracking active");
+                    const deviceName = selectedDevice ? selectedDevice.DeviceName : 'Eye Tracker';
+                    updateStatusIndicator(`${deviceName} active`);
                 })
                 .catch(() => {
                     console.error("Failed to connect to eye tracker service");
@@ -1850,6 +1958,24 @@
                 // Track when gaze data was last received (for tracking lost detection)
                 gazeState.lastGazeReceivedTime = Date.now();
 
+                // Parse extended Pro data if available (tokens[3] onwards)
+                // Pro format: gaze|x|y|pupilL|pupilR|originLX|originLY|originLZ|originRX|originRY|originRZ|validL|validR
+                let proData = null;
+                if (tokens.length > 3 && tokens[3] !== '') {
+                    proData = {
+                        pupilLeftDiameter: tokens[3] ? parseFloat(tokens[3]) : null,
+                        pupilRightDiameter: tokens[4] ? parseFloat(tokens[4]) : null,
+                        gazeOriginLeftX: tokens[5] ? parseFloat(tokens[5]) : null,
+                        gazeOriginLeftY: tokens[6] ? parseFloat(tokens[6]) : null,
+                        gazeOriginLeftZ: tokens[7] ? parseFloat(tokens[7]) : null,
+                        gazeOriginRightX: tokens[8] ? parseFloat(tokens[8]) : null,
+                        gazeOriginRightY: tokens[9] ? parseFloat(tokens[9]) : null,
+                        gazeOriginRightZ: tokens[10] ? parseFloat(tokens[10]) : null,
+                        leftEyeValidity: tokens[11] ? parseFloat(tokens[11]) : null,
+                        rightEyeValidity: tokens[12] ? parseFloat(tokens[12]) : null
+                    };
+                }
+
                 const coords = screenToViewport(screenX, screenY);
                 const smoothed = smoothGaze(coords.x, coords.y);
 
@@ -1859,7 +1985,8 @@
                         smoothed.x,
                         smoothed.y,
                         gazeState.confidence,
-                        smoothed.velocity || { magnitude: 0 }
+                        smoothed.velocity || { magnitude: 0 },
+                        proData  // Pass extended Pro data if available
                     );
                 }
 
