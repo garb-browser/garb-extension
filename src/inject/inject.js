@@ -31,6 +31,7 @@
     const TRACKING_MODES = {
         GAZE: 'gaze',
         BASELINE: 'baseline',
+        MANUAL: 'manual',
         NONE: 'none'
     };
     let currentTrackingMode = null; // Default to null - user must explicitly select a mode
@@ -54,6 +55,13 @@
     let baselineWordMap = []; // Flat array: [{line, wordIdx, element}, ...]
     let baselineTotalWords = 0;
     let baselineInitialized = false;
+
+    // ========================================
+    // MANUAL MODE STATE (arrow-key line-by-line)
+    // ========================================
+    let manualCurrentLine = 0;        // Index into manualLineElements
+    let manualLineElements = [];      // Cached .garb-line elements in DOM order
+    let manualModeActive = false;
 
     // ========================================
     // PAUSE/LOCK STATE
@@ -1645,6 +1653,7 @@
                     <div class="garb-mode-options-compact">
                         <button class="garb-mode-btn-compact${currentTrackingMode === 'gaze' ? ' active' : ''}" data-mode="gaze" title="Eye tracking">Gaze</button>
                         <button class="garb-mode-btn-compact${currentTrackingMode === 'baseline' ? ' active' : ''}" data-mode="baseline" title="Fixed pace">Baseline</button>
+                        <button class="garb-mode-btn-compact${currentTrackingMode === 'manual' ? ' active' : ''}" data-mode="manual" title="Arrow key navigation">Manual</button>
                         <button class="garb-mode-btn-compact${currentTrackingMode === 'none' ? ' active' : ''}" data-mode="none" title="No highlight">Off</button>
                     </div>
                 </div>
@@ -2983,6 +2992,20 @@
                     toggleAutoScroll();
                 }
             }
+
+            // Arrow keys for Manual mode (plain, no modifiers)
+            if (currentTrackingMode === TRACKING_MODES.MANUAL && !e.altKey && !e.ctrlKey && !e.metaKey) {
+                if (e.target.tagName !== 'INPUT' && e.target.tagName !== 'TEXTAREA') {
+                    if (e.key === 'ArrowDown') {
+                        e.preventDefault();
+                        manualAdvanceLine('down');
+                    }
+                    if (e.key === 'ArrowUp') {
+                        e.preventDefault();
+                        manualAdvanceLine('up');
+                    }
+                }
+            }
         });
     }
 
@@ -3494,6 +3517,121 @@
         console.log("GARB: Baseline mode stopped");
     }
 
+    // ========================================
+    // MANUAL MODE (arrow-key line-by-line)
+    // ========================================
+
+    function startManualMode() {
+        manualLineElements = Array.from(document.querySelectorAll('.garb-line'));
+        if (manualLineElements.length === 0) {
+            console.log('GARB: Manual mode - no .garb-line elements found');
+            return;
+        }
+
+        manualModeActive = true;
+
+        // Find the first line visible in the viewport
+        manualCurrentLine = 0;
+        for (let i = 0; i < manualLineElements.length; i++) {
+            const rect = manualLineElements[i].getBoundingClientRect();
+            if (rect.top >= 0 && rect.top < window.innerHeight) {
+                manualCurrentLine = i;
+                break;
+            }
+        }
+
+        highlightManualLine(manualCurrentLine);
+        console.log(`GARB: Manual mode started at line ${manualCurrentLine}`);
+
+        if (dataLogger) {
+            dataLogger.logUIEvent('manual_start', {
+                line_index: manualCurrentLine,
+                total_lines: manualLineElements.length
+            });
+        }
+    }
+
+    function stopManualMode() {
+        manualModeActive = false;
+        clearAllHighlighting();
+        console.log('GARB: Manual mode stopped');
+    }
+
+    function highlightManualLine(lineIndex) {
+        if (lineIndex < 0 || lineIndex >= manualLineElements.length) return;
+
+        // Remove active highlight from all lines
+        document.querySelectorAll('.garb-line-active').forEach(el => {
+            el.classList.remove('garb-line-active');
+        });
+
+        // Mark all lines before current as complete (read)
+        for (let i = 0; i < lineIndex; i++) {
+            manualLineElements[i].classList.add('garb-line-complete');
+        }
+
+        // Highlight current line
+        const lineEl = manualLineElements[lineIndex];
+        lineEl.classList.add('garb-line-active');
+
+        // Mark all words in current line as read (whole-line highlight)
+        const words = lineEl.querySelectorAll('.garb-word');
+        words.forEach(w => {
+            w.classList.add('garb-word-read');
+        });
+
+        // Auto-scroll if enabled
+        if (autoScrollEnabled && autoScrollInitialized) {
+            const now = Date.now();
+            if (now - lastScrollTime > SCROLL_COOLDOWN_BASELINE) {
+                const rect = lineEl.getBoundingClientRect();
+                const viewportHeight = window.innerHeight;
+                const linePosition = rect.top / viewportHeight;
+
+                if (linePosition > SCROLL_ZONE_BOTTOM || linePosition < SCROLL_ZONE_TOP) {
+                    const targetPosition = viewportHeight * 0.35;
+                    const scrollAmount = rect.top - targetPosition;
+
+                    if (Math.abs(scrollAmount) > 50) {
+                        smoothScrollBy(scrollAmount, SCROLL_DURATION_MS);
+                        lastScrollTime = now;
+                    }
+                }
+            }
+        }
+    }
+
+    function manualAdvanceLine(direction) {
+        if (!manualModeActive || manualLineElements.length === 0) return;
+
+        const oldLine = manualCurrentLine;
+
+        if (direction === 'down' && manualCurrentLine < manualLineElements.length - 1) {
+            manualCurrentLine++;
+        } else if (direction === 'up' && manualCurrentLine > 0) {
+            // When going up, remove complete/read state from the line we're leaving
+            const leavingEl = manualLineElements[manualCurrentLine];
+            leavingEl.classList.remove('garb-line-complete');
+            leavingEl.querySelectorAll('.garb-word-read').forEach(w => {
+                w.classList.remove('garb-word-read');
+            });
+            manualCurrentLine--;
+        } else {
+            return; // At boundary, do nothing
+        }
+
+        highlightManualLine(manualCurrentLine);
+
+        if (dataLogger) {
+            dataLogger.logUIEvent('line_switch', {
+                old_line: oldLine,
+                new_line: manualCurrentLine,
+                reason: 'manual_key',
+                direction: direction
+            });
+        }
+    }
+
     /**
      * Reset baseline mode state (for new articles)
      */
@@ -3689,11 +3827,12 @@
             });
         }
 
-        // Stop baseline interval if switching away from baseline
+        // Stop previous mode
         if (oldMode === TRACKING_MODES.BASELINE) {
             stopBaselineMode();
-            // Track when we paused baseline so we can account for time in other modes
             baselinePauseStartTime = Date.now();
+        } else if (oldMode === TRACKING_MODES.MANUAL) {
+            stopManualMode();
         }
 
         // ALWAYS clear highlights when switching modes (so new colors show)
@@ -3701,34 +3840,25 @@
 
         // ========================================
         // MODE TRANSITION HANDLING
-        // A→B: Sync baseline to gaze position (fresh calculation)
-        // B→A: Sync gaze to baseline position
-        // C→B: Resume baseline from where it was (add pause duration)
         // ========================================
 
         if (mode === TRACKING_MODES.BASELINE) {
             if (oldMode === TRACKING_MODES.GAZE) {
-                // A→B: Sync baseline to current gaze position
-                // syncBaselineToGazePosition() does a FRESH calculation, no pause adjustment needed
                 syncBaselineToGazePosition();
-                baselinePauseStartTime = 0; // Clear any stale pause time
-            } else if (oldMode === TRACKING_MODES.NONE) {
-                // C→B: Resume baseline from where it was paused
-                // Account for time spent in Mode C
+                baselinePauseStartTime = 0;
+            } else if (oldMode === TRACKING_MODES.NONE || oldMode === TRACKING_MODES.MANUAL) {
                 if (baselinePauseStartTime > 0 && baselineStartTime > 0) {
                     baselinePausedDuration += Date.now() - baselinePauseStartTime;
-                    console.log(`GARB: Baseline resuming from Mode C, added pause: ${Date.now() - baselinePauseStartTime}ms`);
                     baselinePauseStartTime = 0;
                 }
             }
-            // null→B: Fresh start, startBaselineMode() handles initialization
             startBaselineMode();
         } else if (mode === TRACKING_MODES.GAZE) {
             if (oldMode === TRACKING_MODES.BASELINE) {
-                // B→A: Sync gaze to baseline position
                 syncGazeToBaselinePosition();
             }
-            // C→A or null→A: No sync needed, gaze will track from current eye position
+        } else if (mode === TRACKING_MODES.MANUAL) {
+            startManualMode();
         }
 
         // Update mode indicator in UI
@@ -3984,6 +4114,9 @@
                 break;
             case TRACKING_MODES.BASELINE:
                 modeText = `Baseline (${baselineWPM} WPM)`;
+                break;
+            case TRACKING_MODES.MANUAL:
+                modeText = 'Manual (↑↓ Keys)';
                 break;
             case TRACKING_MODES.NONE:
                 modeText = 'No Highlight';
