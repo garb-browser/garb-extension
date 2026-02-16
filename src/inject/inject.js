@@ -131,8 +131,8 @@
         candidateLine: -1,
         candidateLineStartTime: 0,
         candidateLineCount: 0,
-        lineLockDurationMs: 250,
-        lineMarginThreshold: 40, // px
+        lineLockDurationMs: 300,
+        lineMarginThreshold: 60, // px — must exceed eye tracker noise (~46px RMS)
         currentLockedLine: -1,
 
         // Manual nudge lock (prevents gaze override after nudge)
@@ -156,6 +156,17 @@
         lastGazeReceivedTime: 0,
         trackingLostCheckInterval: null,
     };
+
+    // ========================================
+    // GAZE CALIBRATION (Multi-Monitor DPI Correction)
+    // ========================================
+    let gazeCalibration = null;       // Active: { scaleX, scaleY, fixedOffsetX, fixedOffsetY }
+    let isCalibrating = false;
+    let calibrationRawSamples = [];
+
+    function getCalibrationStorageKey() {
+        return `garb-gaze-cal-${screen.width}x${screen.height}-dpr${window.devicePixelRatio}-at${screen.availLeft},${screen.availTop}`;
+    }
 
     /**
      * DataLogger - Comprehensive event logging for research
@@ -1307,6 +1318,35 @@
             });
         }
 
+        // Gaze calibration buttons
+        const calibrateBtn = document.getElementById('garb-calibrate-btn');
+        if (calibrateBtn) {
+            calibrateBtn.addEventListener('click', () => {
+                const panel = document.getElementById('garb-settings-panel');
+                if (panel) panel.classList.remove('visible');
+                setTimeout(() => startGazeCalibration(), 200);
+            });
+        }
+        const calibrateClearBtn = document.getElementById('garb-calibrate-clear');
+        if (calibrateClearBtn) {
+            calibrateClearBtn.addEventListener('click', () => {
+                gazeCalibration = null;
+                try { localStorage.removeItem(getCalibrationStorageKey()); } catch (e) {}
+                updateCalibrationBadge();
+                console.log('[GARB] Calibration cleared, using fallback');
+            });
+        }
+
+        // Load saved gaze calibration for this monitor
+        try {
+            const saved = localStorage.getItem(getCalibrationStorageKey());
+            if (saved) {
+                gazeCalibration = JSON.parse(saved);
+                console.log('[GARB] Loaded saved calibration:', gazeCalibration);
+            }
+        } catch (e) {}
+        updateCalibrationBadge();
+
         // Clear progress button
         const clearProgressBtn = document.getElementById('garb-clear-progress');
         if (clearProgressBtn) {
@@ -1606,6 +1646,14 @@
                         <button class="garb-mode-btn-compact${currentTrackingMode === 'gaze' ? ' active' : ''}" data-mode="gaze" title="Eye tracking">Gaze</button>
                         <button class="garb-mode-btn-compact${currentTrackingMode === 'baseline' ? ' active' : ''}" data-mode="baseline" title="Fixed pace">Baseline</button>
                         <button class="garb-mode-btn-compact${currentTrackingMode === 'none' ? ' active' : ''}" data-mode="none" title="No highlight">Off</button>
+                    </div>
+                </div>
+                <div class="garb-settings-section garb-calibration-section">
+                    <span class="garb-settings-label">Gaze Calibration</span>
+                    <div class="garb-calibration-controls">
+                        <button class="garb-calibrate-btn" id="garb-calibrate-btn" title="Calibrate gaze position">Calibrate</button>
+                        <button class="garb-calibrate-clear-btn" id="garb-calibrate-clear" title="Clear calibration">Clear</button>
+                        <span class="garb-calibration-badge" id="garb-calibration-badge"></span>
                     </div>
                 </div>
                 <div class="garb-settings-footer">
@@ -1958,6 +2006,12 @@
                 // Track when gaze data was last received (for tracking lost detection)
                 gazeState.lastGazeReceivedTime = Date.now();
 
+                // During calibration, collect raw samples instead of processing
+                if (isCalibrating) {
+                    calibrationRawSamples.push({ x: screenX, y: screenY, time: Date.now() });
+                    return;
+                }
+
                 // Parse extended Pro data if available (tokens[3] onwards)
                 // Pro format: gaze|x|y|pupilL|pupilR|originLX|originLY|originLZ|originRX|originRY|originRZ|validL|validR
                 let proData = null;
@@ -1978,6 +2032,9 @@
 
                 const coords = screenToViewport(screenX, screenY);
                 const smoothed = smoothGaze(coords.x, coords.y);
+
+                // Debug gaze dot — uncomment to see where the system thinks gaze is
+                // updateGazeDot(smoothed.x, smoothed.y);
 
                 // ALWAYS log gaze data regardless of mode (for research purposes)
                 if (dataLogger) {
@@ -2041,23 +2098,277 @@
     // TODO: Add user calibration sliders to settings panel for fine-tuning
 
     /**
-     * Convert screen coordinates to viewport coordinates
+     * Convert screen coordinates to viewport coordinates.
+     * The eye tracker sends raw coordinates in physical desktop pixels.
+     * On mixed-DPI multi-monitor setups, dividing by DPR² converts Tobii's
+     * physical coordinates into Chrome's CSS coordinate space.
+     * When DPR=1 (100% scaling), this is a no-op.
      */
     function screenToViewport(screenX, screenY) {
-        // Calculate browser chrome (toolbars, address bar, etc.)
-        const horizontalChrome = window.outerWidth - window.innerWidth;
-        const verticalChrome = window.outerHeight - window.innerHeight;
+        const dpr = window.devicePixelRatio || 1;
 
-        // Left offset is typically half the horizontal chrome (for borders/scrollbars)
-        const leftOffset = Math.max(0, horizontalChrome / 2);
-        // Top offset is the full vertical chrome (toolbars at top)
-        const topOffset = Math.max(0, verticalChrome);
+        // Measure actual chrome offset from mouse events (most reliable)
+        // Falls back to capped estimate if no mouse data yet
+        if (!screenToViewport._chromeCalibrated) {
+            screenToViewport._chromeLeft = 8;  // reasonable default
+            screenToViewport._chromeTop = Math.min(window.outerHeight - window.innerHeight, 180);
+            document.addEventListener('mousemove', function _calibrateChrome(e) {
+                screenToViewport._chromeLeft = e.screenX - e.clientX - window.screenX;
+                screenToViewport._chromeTop = e.screenY - e.clientY - window.screenY;
+                screenToViewport._chromeCalibrated = true;
+                console.log('[GARB] Chrome offset calibrated:', screenToViewport._chromeLeft, screenToViewport._chromeTop);
+                document.removeEventListener('mousemove', _calibrateChrome);
+            }, { once: true });
+        }
+        const leftOffset = screenToViewport._chromeLeft;
+        const topOffset = screenToViewport._chromeTop;
 
-        // Convert to viewport coordinates with calibration offset
-        const viewportX = screenX - window.screenX - leftOffset + GAZE_X_OFFSET;
-        const viewportY = screenY - window.screenY - topOffset + GAZE_Y_OFFSET;
+        let viewportX, viewportY;
+
+        if (gazeCalibration) {
+            // Calibrated path: empirically determined linear transform
+            // fixedOffset captures the physical→CSS coordinate system mapping
+            // window.screenX and chromeLeft are subtracted dynamically (handles window moves)
+            // No GAZE_Y_OFFSET here — calibration already captures the correct mapping
+            viewportX = screenX * gazeCalibration.scaleX + gazeCalibration.fixedOffsetX
+                        - window.screenX - leftOffset;
+            viewportY = screenY * gazeCalibration.scaleY + gazeCalibration.fixedOffsetY
+                        - window.screenY - topOffset;
+        } else {
+            // Fallback: DPR² approximation (close but not exact on mixed-DPI)
+            const dpr2 = dpr * dpr;
+            viewportX = screenX / dpr2 - window.screenX - leftOffset + GAZE_X_OFFSET;
+            viewportY = screenY / dpr2 - window.screenY - topOffset + GAZE_Y_OFFSET;
+        }
+
+        // Diagnostic logging (throttled every 3s)
+        if (!screenToViewport._lastLog || Date.now() - screenToViewport._lastLog > 3000) {
+            console.log('[GARB]',
+                'raw:', screenX.toFixed(0), screenY.toFixed(0),
+                '| mode:', gazeCalibration ? 'CALIBRATED' : 'FALLBACK(dpr²)',
+                '| chrome:', leftOffset, topOffset,
+                '| win:', window.screenX, window.screenY,
+                '| viewport:', viewportX.toFixed(0), viewportY.toFixed(0)
+            );
+            screenToViewport._lastLog = Date.now();
+        }
 
         return { x: viewportX, y: viewportY };
+    }
+
+    // ========================================
+    // DEBUG GAZE DOT
+    // ========================================
+
+    let _gazeDotEl = null;
+
+    function updateGazeDot(x, y) {
+        if (!_gazeDotEl) {
+            _gazeDotEl = document.createElement('div');
+            _gazeDotEl.id = 'garb-gaze-dot';
+            _gazeDotEl.style.cssText = `
+                position: fixed;
+                width: 12px;
+                height: 12px;
+                background: rgba(0, 255, 80, 0.7);
+                border: 2px solid rgba(0, 255, 80, 1);
+                border-radius: 50%;
+                pointer-events: none;
+                z-index: 2147483647;
+                transform: translate(-50%, -50%);
+                transition: left 0.03s linear, top 0.03s linear;
+                box-shadow: 0 0 6px rgba(0, 255, 80, 0.5);
+            `;
+            document.body.appendChild(_gazeDotEl);
+        }
+        _gazeDotEl.style.left = x + 'px';
+        _gazeDotEl.style.top = y + 'px';
+    }
+
+    // ========================================
+    // GAZE CALIBRATION PROCEDURE
+    // ========================================
+
+    function calibSleep(ms) {
+        return new Promise(resolve => setTimeout(resolve, ms));
+    }
+
+    function collectRawGazeSamples(durationMs) {
+        return new Promise(resolve => {
+            calibrationRawSamples = [];
+            setTimeout(() => {
+                const samples = [...calibrationRawSamples];
+                calibrationRawSamples = [];
+                resolve(samples);
+            }, durationMs);
+        });
+    }
+
+    function trimmedMean(samples, trimFraction) {
+        const n = samples.length;
+        const trimCount = Math.floor(n * trimFraction);
+        const sortedX = samples.map(s => s.x).sort((a, b) => a - b);
+        const sortedY = samples.map(s => s.y).sort((a, b) => a - b);
+        const tX = sortedX.slice(trimCount, n - trimCount);
+        const tY = sortedY.slice(trimCount, n - trimCount);
+        return {
+            x: tX.reduce((a, b) => a + b, 0) / tX.length,
+            y: tY.reduce((a, b) => a + b, 0) / tY.length
+        };
+    }
+
+    /**
+     * Run 2-point gaze calibration.
+     * Shows crosshair targets at known viewport positions, collects raw Tobii
+     * data while user fixates, then computes the empirical linear transform.
+     */
+    async function startGazeCalibration() {
+        if (isCalibrating) return;
+        isCalibrating = true;
+
+        // 9-point calibration grid (3x3) for robust least-squares fit
+        // Margins at 10%/50%/90% to cover full viewport range
+        const positions = [0.10, 0.50, 0.90];
+        const targets = [];
+        for (const fy of positions) {
+            for (const fx of positions) {
+                targets.push({ fracX: fx, fracY: fy });
+            }
+        }
+        const FIXATION_MS = 2000; // Collection time per point
+        const SETTLE_MS = 700;    // Time for eyes to find target
+
+        // Create overlay
+        const overlay = document.createElement('div');
+        overlay.className = 'garb-calibration-overlay';
+        overlay.innerHTML = `
+            <div class="garb-calibration-message">
+                <h2>Gaze Calibration (9-point)</h2>
+                <p>Look at each crosshair and hold your gaze steady.</p>
+                <p class="garb-calibration-status">Preparing...</p>
+            </div>
+            <div class="garb-calibration-target" id="garb-calib-target">
+                <div class="garb-calibration-crosshair"></div>
+                <div class="garb-calibration-ring"></div>
+            </div>
+        `;
+        document.body.appendChild(overlay);
+
+        const targetEl = overlay.querySelector('#garb-calib-target');
+        const statusEl = overlay.querySelector('.garb-calibration-status');
+        const results = [];
+        const numPoints = targets.length;
+
+        for (let i = 0; i < numPoints; i++) {
+            const vx = targets[i].fracX * window.innerWidth;
+            const vy = targets[i].fracY * window.innerHeight;
+
+            targetEl.style.left = vx + 'px';
+            targetEl.style.top = vy + 'px';
+
+            statusEl.textContent = `Point ${i + 1} of ${numPoints}: Look at the crosshair...`;
+            await calibSleep(SETTLE_MS);
+
+            statusEl.textContent = `Point ${i + 1} of ${numPoints}: Hold steady...`;
+            const rawSamples = await collectRawGazeSamples(FIXATION_MS);
+
+            if (rawSamples.length < 10) {
+                statusEl.textContent = 'Not enough gaze data. Is the eye tracker running?';
+                await calibSleep(2000);
+                overlay.remove();
+                isCalibrating = false;
+                return;
+            }
+
+            const avgRaw = trimmedMean(rawSamples, 0.15);
+            results.push({
+                viewportX: vx, viewportY: vy,
+                rawX: avgRaw.x, rawY: avgRaw.y,
+                winX: window.screenX, winY: window.screenY,
+                chromeL: screenToViewport._chromeLeft,
+                chromeT: screenToViewport._chromeTop
+            });
+
+            console.log(`[GARB] Cal ${i + 1}/${numPoints}: target(${vx.toFixed(0)},${vy.toFixed(0)}) raw(${avgRaw.x.toFixed(1)},${avgRaw.y.toFixed(1)}) n=${rawSamples.length}`);
+        }
+
+        // Compute linear transform using least-squares fit across all 9 points
+        const n = results.length;
+
+        const absResults = results.map(r => ({
+            absX: r.viewportX + r.winX + r.chromeL,
+            absY: r.viewportY + r.winY + r.chromeT,
+            rawX: r.rawX,
+            rawY: r.rawY
+        }));
+
+        const rawMeanX = absResults.reduce((s, r) => s + r.rawX, 0) / n;
+        const rawMeanY = absResults.reduce((s, r) => s + r.rawY, 0) / n;
+        const absMeanX = absResults.reduce((s, r) => s + r.absX, 0) / n;
+        const absMeanY = absResults.reduce((s, r) => s + r.absY, 0) / n;
+
+        let sumXXraw = 0, sumXYraw = 0, sumYYraw = 0, sumYXabs = 0;
+        for (const r of absResults) {
+            const dRawX = r.rawX - rawMeanX;
+            const dRawY = r.rawY - rawMeanY;
+            const dAbsX = r.absX - absMeanX;
+            const dAbsY = r.absY - absMeanY;
+            sumXXraw += dRawX * dRawX;
+            sumXYraw += dRawX * dAbsX;
+            sumYYraw += dRawY * dRawY;
+            sumYXabs += dRawY * dAbsY;
+        }
+
+        const scaleX = sumXXraw > 0 ? sumXYraw / sumXXraw : 1;
+        const scaleY = sumYYraw > 0 ? sumYXabs / sumYYraw : 1;
+        const fixedOffsetX = absMeanX - rawMeanX * scaleX;
+        const fixedOffsetY = absMeanY - rawMeanY * scaleY;
+
+        gazeCalibration = { scaleX, scaleY, fixedOffsetX, fixedOffsetY };
+
+        // Log residual errors to assess fit quality
+        let maxErrX = 0, maxErrY = 0, sumErrSq = 0;
+        for (let i = 0; i < results.length; i++) {
+            const r = absResults[i];
+            const predX = r.rawX * scaleX + fixedOffsetX;
+            const predY = r.rawY * scaleY + fixedOffsetY;
+            const errX = predX - r.absX;
+            const errY = predY - r.absY;
+            maxErrX = Math.max(maxErrX, Math.abs(errX));
+            maxErrY = Math.max(maxErrY, Math.abs(errY));
+            sumErrSq += errX * errX + errY * errY;
+            console.log(`[GARB] Residual pt ${i + 1}: errX=${errX.toFixed(1)}px errY=${errY.toFixed(1)}px`);
+        }
+        const rmsErr = Math.sqrt(sumErrSq / n);
+        console.log(`[GARB] Calibration RMS error: ${rmsErr.toFixed(1)}px, max: (${maxErrX.toFixed(1)}, ${maxErrY.toFixed(1)})px`);
+
+        // Save to localStorage
+        try {
+            localStorage.setItem(getCalibrationStorageKey(), JSON.stringify(gazeCalibration));
+        } catch (e) {}
+
+        console.log('[GARB] Calibration complete:', gazeCalibration);
+
+        updateCalibrationBadge();
+
+        statusEl.textContent = 'Calibration complete!';
+        targetEl.style.display = 'none';
+        await calibSleep(1000);
+
+        overlay.remove();
+        isCalibrating = false;
+    }
+
+    function updateCalibrationBadge() {
+        const badge = document.getElementById('garb-calibration-badge');
+        if (!badge) return;
+        if (gazeCalibration) {
+            badge.textContent = 'Calibrated';
+            badge.className = 'garb-calibration-badge calibrated';
+        } else {
+            badge.textContent = 'Fallback';
+            badge.className = 'garb-calibration-badge';
+        }
     }
 
     /**
@@ -2232,7 +2543,11 @@
                 continue;
             }
 
-            const distance = Math.abs(gazeY - lineRect.centerY);
+            // Use a gaze target biased toward the upper portion of the line.
+            // When reading, eyes focus on the x-height (upper ~40% of the line box),
+            // not the geometric center (which includes descenders + line spacing).
+            const gazeTarget = lineRect.top + lineRect.height * 0.4;
+            const distance = Math.abs(gazeY - gazeTarget);
 
             if (distance < bestDistance) {
                 bestDistance = distance;
@@ -2794,8 +3109,15 @@
             wordReadProgress[lineNum] = -1;
         }
 
-        // Find closest word by position
-        const words = lineEl.querySelectorAll('.garb-word');
+        // Apply line lock with hysteresis
+        const lockedLineNum = applyLineLockHysteresis(lineNum, y, lineMatch);
+
+        // Get the locked line element
+        const lockedLineEl = document.querySelector(`.garb-line[data-line="${lockedLineNum}"]`);
+        if (!lockedLineEl) return;
+
+        // Find closest word by position on the LOCKED line (not the detected line)
+        const words = lockedLineEl.querySelectorAll('.garb-word');
         let rawWordIdx = 0;
         let closestDist = Infinity;
 
@@ -2808,13 +3130,6 @@
                 rawWordIdx = idx;
             }
         });
-
-        // Apply line lock with hysteresis
-        const lockedLineNum = applyLineLockHysteresis(lineNum, y, lineMatch);
-
-        // Get the locked line element
-        const lockedLineEl = document.querySelector(`.garb-line[data-line="${lockedLineNum}"]`);
-        if (!lockedLineEl) return;
 
         // Word-level stabilization (simpler than before)
         let stableWordIdx = lastStableWordIdx;
