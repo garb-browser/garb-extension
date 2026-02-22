@@ -375,9 +375,9 @@ chrome.runtime.onMessage.addListener(
       else if (request.contentScriptQuery == "getFromDatabase") {
 
         // Get the user and url
-        var user = request.data.user;
-        var pageUrl = encodeURIComponent(request.data.url);
-        var url = `${API_URL}/pageSessions/${user}/${pageUrl}`;
+        const user = request.data.user;
+        const pageUrl = encodeURIComponent(request.data.url);
+        const url = `${API_URL}/pageSessions/${user}/${pageUrl}`;
         console.log(url);  // Use console.log instead of alert
 
         fetch(url, {
@@ -461,7 +461,7 @@ function sendMode(i) {
   //   }
 
 
-  // var event = new CustomEvent("getMode", {
+  // const event = new CustomEvent("getMode", {
   //   body: {
   //     mode: i
   //   }
@@ -489,7 +489,7 @@ function getUser() {
 // Function to sign up ---------------------------
 async function signup(username, password) {
   const fields = {username, password};
-  var url = `${API_URL}/signup`;
+  const url = `${API_URL}/signup`;
 
   // Fetch request
   await fetch(url, {
@@ -524,7 +524,7 @@ async function signup(username, password) {
 // Function to sign in ------------------------------
 async function signin(username, password) {
   const fields = {username, password};
-  var url = `${API_URL}/signin`;
+  const url = `${API_URL}/signin`;
 
   // Fetch request
   await fetch(url, {
