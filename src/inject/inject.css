@@ -17,20 +17,20 @@
     --text-muted: #86868b;
     --border-color: #d2d2d7;
     --link-color: #06c;
-    /* Mode A (Gaze): Visible but subtle blue-gray highlight */
-    --highlight-read: rgba(100, 120, 140, 0.12);
-    --highlight-current: rgba(100, 120, 140, 0.22);
-    --highlight-line-active: rgba(100, 120, 140, 0.06);
-    --highlight-line-complete: rgba(100, 120, 140, 0.04);
+    /* Unified highlight colors (same across all modes) */
+    --highlight-read: rgba(128, 128, 128, 0.18);
+    --highlight-current: rgba(245, 222, 120, 0.40);
+    --highlight-line-active: rgba(245, 222, 120, 0.12);
+    --highlight-line-complete: rgba(128, 128, 128, 0.08);
     --toolbar-bg: #ffffff;
     --toolbar-hover: #f5f5f7;
     --shadow-color: rgba(0, 0, 0, 0.04);
     --heading-color: #1d1d1f;
     --current-indicator: #1d1d1f;
-    /* Gaze bubble - visible focus ring */
-    --gaze-ring-inner: rgba(100, 120, 140, 0.08);
-    --gaze-ring-color: rgba(100, 120, 140, 0.14);
-    --gaze-ring-outer: rgba(100, 120, 140, 0.06);
+    /* Gaze bubble - warm focus ring */
+    --gaze-ring-inner: rgba(200, 180, 80, 0.10);
+    --gaze-ring-color: rgba(200, 180, 80, 0.18);
+    --gaze-ring-outer: rgba(200, 180, 80, 0.08);
 }
 
 /* White Theme - pure, clean white */
@@ -43,19 +43,19 @@
     --border-color: #c7c7cc;
     --shadow-color: rgba(0, 0, 0, 0.06);
     --link-color: #06c;
-    /* Mode A: Visible blue-gray highlights */
-    --highlight-read: rgba(100, 120, 140, 0.12);
-    --highlight-current: rgba(100, 120, 140, 0.22);
-    --highlight-line-active: rgba(100, 120, 140, 0.06);
-    --highlight-line-complete: rgba(100, 120, 140, 0.04);
+    /* Unified: gray read + cream/yellow active */
+    --highlight-read: rgba(128, 128, 128, 0.18);
+    --highlight-current: rgba(245, 222, 120, 0.40);
+    --highlight-line-active: rgba(245, 222, 120, 0.12);
+    --highlight-line-complete: rgba(128, 128, 128, 0.08);
     --toolbar-bg: #f5f5f7;
     --toolbar-hover: #e8e8ed;
     --heading-color: #1d1d1f;
     --current-indicator: #1d1d1f;
-    /* Gaze bubble - visible focus ring */
-    --gaze-ring-inner: rgba(100, 120, 140, 0.08);
-    --gaze-ring-color: rgba(100, 120, 140, 0.14);
-    --gaze-ring-outer: rgba(100, 120, 140, 0.06);
+    /* Gaze bubble - warm focus ring */
+    --gaze-ring-inner: rgba(200, 180, 80, 0.10);
+    --gaze-ring-color: rgba(200, 180, 80, 0.18);
+    --gaze-ring-outer: rgba(200, 180, 80, 0.08);
 }
 
 /* Gray Theme - soft gray, easy on eyes */
@@ -69,14 +69,14 @@
     --shadow-color: rgba(0, 0, 0, 0.08);
     --toolbar-bg: #e5e5ea;
     --toolbar-hover: #d2d2d7;
-    /* Mode A: Visible blue-gray highlights on gray bg */
-    --highlight-read: rgba(70, 100, 130, 0.14);
-    --highlight-current: rgba(70, 100, 130, 0.25);
-    --highlight-line-active: rgba(70, 100, 130, 0.07);
-    --highlight-line-complete: rgba(70, 100, 130, 0.05);
-    --gaze-ring-inner: rgba(70, 100, 130, 0.10);
-    --gaze-ring-color: rgba(70, 100, 130, 0.16);
-    --gaze-ring-outer: rgba(70, 100, 130, 0.08);
+    /* Unified: gray read + cream/yellow active */
+    --highlight-read: rgba(128, 128, 128, 0.20);
+    --highlight-current: rgba(245, 222, 120, 0.42);
+    --highlight-line-active: rgba(245, 222, 120, 0.14);
+    --highlight-line-complete: rgba(128, 128, 128, 0.08);
+    --gaze-ring-inner: rgba(200, 180, 80, 0.12);
+    --gaze-ring-color: rgba(200, 180, 80, 0.20);
+    --gaze-ring-outer: rgba(200, 180, 80, 0.10);
 }
 
 /* Cream/Sepia Theme - warm, paper-like, easy on eyes */
@@ -88,20 +88,20 @@
     --text-muted: #8a857e;
     --border-color: #cdc6bc;
     --link-color: #8b6914;
-    /* Mode A: Cool blue-purple tint for contrast on warm background */
-    --highlight-read: rgba(100, 90, 140, 0.14);
-    --highlight-current: rgba(100, 90, 140, 0.24);
-    --highlight-line-active: rgba(100, 90, 140, 0.07);
-    --highlight-line-complete: rgba(100, 90, 140, 0.05);
+    /* Unified: gray read + cream/yellow active */
+    --highlight-read: rgba(128, 128, 128, 0.18);
+    --highlight-current: rgba(245, 222, 120, 0.38);
+    --highlight-line-active: rgba(245, 222, 120, 0.12);
+    --highlight-line-complete: rgba(128, 128, 128, 0.08);
     --toolbar-bg: #f2ede6;
     --toolbar-hover: #e4ddd4;
     --shadow-color: rgba(0, 0, 0, 0.06);
     --heading-color: #3d3833;
     --current-indicator: #8b6914;
-    /* Gaze bubble - cool purple tint for visibility */
-    --gaze-ring-inner: rgba(100, 90, 140, 0.10);
-    --gaze-ring-color: rgba(100, 90, 140, 0.16);
-    --gaze-ring-outer: rgba(100, 90, 140, 0.08);
+    /* Gaze bubble - warm focus ring */
+    --gaze-ring-inner: rgba(200, 180, 80, 0.10);
+    --gaze-ring-color: rgba(200, 180, 80, 0.18);
+    --gaze-ring-outer: rgba(200, 180, 80, 0.08);
 }
 
 /* Dark Theme - true dark, minimal strain */
@@ -113,78 +113,27 @@
     --text-muted: #6e6e73;
     --border-color: #38383a;
     --link-color: #0a84ff;
-    /* Mode A (Gaze): Cyan/teal highlight for dark mode - visible, modern */
-    --highlight-read: rgba(80, 200, 220, 0.14);
-    --highlight-current: rgba(80, 200, 220, 0.26);
-    --highlight-line-active: rgba(80, 200, 220, 0.08);
-    --highlight-line-complete: rgba(80, 200, 220, 0.05);
+    /* Unified: gray read + cream/yellow active (dark-adjusted) */
+    --highlight-read: rgba(180, 180, 180, 0.12);
+    --highlight-current: rgba(245, 222, 120, 0.30);
+    --highlight-line-active: rgba(245, 222, 120, 0.10);
+    --highlight-line-complete: rgba(180, 180, 180, 0.06);
     --toolbar-bg: #2c2c2e;
     --toolbar-hover: #38383a;
     --shadow-color: rgba(0, 0, 0, 0.5);
     --heading-color: #f5f5f7;
     --current-indicator: #f5f5f7;
-    /* Gaze bubble - cyan ring for dark mode */
-    --gaze-ring-inner: rgba(80, 200, 220, 0.12);
-    --gaze-ring-color: rgba(80, 200, 220, 0.20);
-    --gaze-ring-outer: rgba(80, 200, 220, 0.10);
+    /* Gaze bubble - warm focus ring (dark-adjusted) */
+    --gaze-ring-inner: rgba(220, 200, 100, 0.12);
+    --gaze-ring-color: rgba(220, 200, 100, 0.22);
+    --gaze-ring-outer: rgba(220, 200, 100, 0.10);
 }
 
 /* ========================================
    MODE-SPECIFIC HIGHLIGHT COLORS
-   Mode A (Gaze): Neutral gray tones (default above)
-   Mode B (Baseline): Subtle warm amber to differentiate
+   REMOVED: All modes now use unified gray (read) + cream/yellow (active)
+   Colors are defined per-theme above. No mode-specific overrides needed.
    ======================================== */
-
-/* Mode B (Baseline) - Default/Gray theme: Warm amber tint */
-.garb-reader[data-mode="baseline"] {
-    --highlight-read: rgba(200, 140, 50, 0.14);
-    --highlight-current: rgba(200, 140, 50, 0.24);
-    --highlight-line-active: rgba(200, 140, 50, 0.07);
-    --highlight-line-complete: rgba(200, 140, 50, 0.05);
-    --gaze-ring-inner: rgba(200, 140, 50, 0.10);
-    --gaze-ring-color: rgba(200, 140, 50, 0.16);
-    --gaze-ring-outer: rgba(200, 140, 50, 0.08);
-}
-
-/* Mode B (Baseline) - White Theme: Warm amber */
-.garb-reader.theme-white[data-mode="baseline"] {
-    --highlight-read: rgba(200, 140, 50, 0.14);
-    --highlight-current: rgba(200, 140, 50, 0.24);
-    --highlight-line-active: rgba(200, 140, 50, 0.07);
-    --gaze-ring-inner: rgba(200, 140, 50, 0.10);
-    --gaze-ring-color: rgba(200, 140, 50, 0.16);
-    --gaze-ring-outer: rgba(200, 140, 50, 0.08);
-}
-
-/* Mode B (Baseline) - Gray Theme: Warm amber, slightly stronger */
-.garb-reader.theme-gray[data-mode="baseline"] {
-    --highlight-read: rgba(200, 140, 50, 0.16);
-    --highlight-current: rgba(200, 140, 50, 0.26);
-    --highlight-line-active: rgba(200, 140, 50, 0.08);
-    --gaze-ring-inner: rgba(200, 140, 50, 0.12);
-    --gaze-ring-color: rgba(200, 140, 50, 0.18);
-    --gaze-ring-outer: rgba(200, 140, 50, 0.10);
-}
-
-/* Mode B (Baseline) - Cream Theme: Teal for contrast on warm background */
-.garb-reader.theme-cream[data-mode="baseline"] {
-    --highlight-read: rgba(40, 120, 110, 0.14);
-    --highlight-current: rgba(40, 120, 110, 0.24);
-    --highlight-line-active: rgba(40, 120, 110, 0.07);
-    --gaze-ring-inner: rgba(40, 120, 110, 0.10);
-    --gaze-ring-color: rgba(40, 120, 110, 0.16);
-    --gaze-ring-outer: rgba(40, 120, 110, 0.08);
-}
-
-/* Mode B (Baseline) - Dark Theme: Soft magenta/pink for contrast with cyan gaze */
-.garb-reader.theme-dark[data-mode="baseline"] {
-    --highlight-read: rgba(220, 120, 180, 0.14);
-    --highlight-current: rgba(220, 120, 180, 0.26);
-    --highlight-line-active: rgba(220, 120, 180, 0.08);
-    --gaze-ring-inner: rgba(220, 120, 180, 0.12);
-    --gaze-ring-color: rgba(220, 120, 180, 0.20);
-    --gaze-ring-outer: rgba(220, 120, 180, 0.10);
-}
 
 /* ========================================
    FONT FAMILY OPTIONS
@@ -644,6 +593,57 @@
     background: var(--article-bg);
     color: var(--text-color);
     box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+}
+
+/* Highlight position offset slider */
+.garb-highlight-offset-section {
+    padding-bottom: 4px;
+}
+
+.garb-highlight-offset-control {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-top: 4px;
+}
+
+.garb-offset-label-left,
+.garb-offset-label-right {
+    font-size: 10px;
+    color: var(--text-muted);
+    white-space: nowrap;
+    min-width: 32px;
+}
+
+.garb-offset-label-left { text-align: right; }
+.garb-offset-label-right { text-align: left; }
+
+.garb-offset-slider {
+    flex: 1;
+    height: 4px;
+    -webkit-appearance: none;
+    appearance: none;
+    background: var(--border-color);
+    border-radius: 2px;
+    outline: none;
+    cursor: pointer;
+}
+
+.garb-offset-slider::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    background: var(--text-color);
+    cursor: pointer;
+}
+
+.garb-offset-value {
+    text-align: center;
+    font-size: 10px;
+    color: var(--text-secondary);
+    margin-top: 2px;
 }
 
 /* Settings footer */

@@ -64,6 +64,12 @@
     let manualModeActive = false;
 
     // ========================================
+    // HIGHLIGHT POSITION OFFSET (user-adjustable)
+    // ========================================
+    // -1 = word before gaze, 0 = current word, +1 = word after gaze
+    let highlightOffset = parseInt(localStorage.getItem('garb-highlight-offset')) || 0;
+
+    // ========================================
     // PAUSE/LOCK STATE
     // ========================================
     let isPaused = false;
@@ -1392,6 +1398,18 @@
             });
         }
 
+        // Highlight offset slider
+        const offsetSlider = document.getElementById('garb-offset-slider');
+        const offsetValue = document.getElementById('garb-offset-value');
+        if (offsetSlider) {
+            offsetSlider.addEventListener('input', function() {
+                highlightOffset = parseInt(this.value);
+                const labels = { '-1': 'Word Before', '0': 'Current Word', '1': 'Word After' };
+                if (offsetValue) offsetValue.textContent = labels[this.value] || 'Current Word';
+                try { localStorage.setItem('garb-highlight-offset', this.value); } catch (e) {}
+            });
+        }
+
         // Load saved preferences
         try {
             const savedTheme = localStorage.getItem('garb-theme');
@@ -1664,6 +1682,15 @@
                         <button class="garb-calibrate-clear-btn" id="garb-calibrate-clear" title="Clear calibration">Clear</button>
                         <span class="garb-calibration-badge" id="garb-calibration-badge"></span>
                     </div>
+                </div>
+                <div class="garb-settings-section garb-highlight-offset-section">
+                    <span class="garb-settings-label">Highlight Position</span>
+                    <div class="garb-highlight-offset-control">
+                        <span class="garb-offset-label-left">Before</span>
+                        <input type="range" class="garb-offset-slider" id="garb-offset-slider" min="-1" max="1" step="1" value="${highlightOffset}">
+                        <span class="garb-offset-label-right">After</span>
+                    </div>
+                    <div class="garb-offset-value" id="garb-offset-value">${highlightOffset === -1 ? 'Word Before' : highlightOffset === 1 ? 'Word After' : 'Current Word'}</div>
                 </div>
                 <div class="garb-settings-footer">
                     <label class="garb-autoscroll-compact" title="Toggle auto-scroll (A)">
@@ -4304,6 +4331,9 @@
             currentWordIdx = readUpToWordIdx;
         }
 
+        // Apply highlight offset (user-adjustable: -1 = before, 0 = current, +1 = after)
+        const offsetCurrentWordIdx = Math.max(0, Math.min(totalWords - 1, currentWordIdx + highlightOffset));
+
         // Clear active highlighting from other lines - only one line should be active at a time
         clearOtherActiveLines(lineNum);
 
@@ -4321,8 +4351,8 @@
                 wordEl.classList.add('garb-word-read');
             }
 
-            // Update floating gaze bubble position for current word
-            if (idx === currentWordIdx) {
+            // Update floating gaze bubble position for offset-adjusted current word
+            if (idx === offsetCurrentWordIdx) {
                 updateGazeBubbleTarget(wordEl);
             }
         });
