@@ -13,7 +13,6 @@
   "background": {
     "service_worker": "src/bg/background.js"
   },
-  "options_page": "src/options_custom/index.html",
   "action": {
     "default_icon": "icons/icon19.png",
     "default_title": "browser action demo",

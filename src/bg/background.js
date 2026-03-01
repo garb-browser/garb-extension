@@ -4,8 +4,22 @@
  */
 
 const API_URL = "https://garb-api-service.onrender.com";
-// const EXTRACT_URL = "https://garb-extraction-service.onrender.com";
-const EXTRACT_URL = "http://localhost:9000";
+const DEFAULT_EXTRACT_URL = "https://garb-extraction-service.onrender.com";
+
+/**
+ * Get the extraction service URL, checking chrome.storage.sync for a custom override.
+ * Falls back to the production Render URL.
+ * @returns {Promise<string>}
+ */
+async function getExtractUrl() {
+  try {
+    const data = await chrome.storage.sync.get('extractUrl');
+    return data.extractUrl || DEFAULT_EXTRACT_URL;
+  } catch (error) {
+    console.error("Error reading extractUrl from storage:", error);
+    return DEFAULT_EXTRACT_URL;
+  }
+}
 
 // Authentication state
 let authenticated = false;
@@ -175,7 +189,6 @@ chrome.runtime.onMessage.addListener(
       // Request to scrape the webpage and return the text data
       // Always uses raw HTML from the extension for reliability (avoids rate limiting)
       if (request.contentScriptQuery == "extractURLContent") {
-        const extractUrl = EXTRACT_URL;
         const requestData = request.data;
 
         // Support both old format (string) and new format (object with url and html)
@@ -185,7 +198,7 @@ chrome.runtime.onMessage.addListener(
         console.log("Extracting:", targetUrl);
 
         // Always send raw HTML directly - faster and avoids rate limiting
-        fetch(extractUrl, {
+        getExtractUrl().then(extractUrl => fetch(extractUrl, {
             method: "POST",
             mode: "cors",
             credentials: "same-origin",
@@ -207,7 +220,7 @@ chrome.runtime.onMessage.addListener(
         .catch(error => {
             console.error("Extraction error:", error);
             sendResponse({ error: error.message, content: '', formatted_content: [] });
-        });
+        }));
         return true;  // Will respond asynchronously.
       }
 
@@ -362,9 +375,9 @@ chrome.runtime.onMessage.addListener(
       else if (request.contentScriptQuery == "getFromDatabase") {
 
         // Get the user and url
-        var user = request.data.user;
-        var pageUrl = encodeURIComponent(request.data.url);
-        var url = `${API_URL}/pageSessions/${user}/${pageUrl}`;
+        const user = request.data.user;
+        const pageUrl = encodeURIComponent(request.data.url);
+        const url = `${API_URL}/pageSessions/${user}/${pageUrl}`;
         console.log(url);  // Use console.log instead of alert
 
         fetch(url, {
@@ -448,7 +461,7 @@ function sendMode(i) {
   //   }
 
 
-  // var event = new CustomEvent("getMode", {
+  // const event = new CustomEvent("getMode", {
   //   body: {
   //     mode: i
   //   }
@@ -476,7 +489,7 @@ function getUser() {
 // Function to sign up ---------------------------
 async function signup(username, password) {
   const fields = {username, password};
-  var url = `${API_URL}/signup`;
+  const url = `${API_URL}/signup`;
 
   // Fetch request
   await fetch(url, {
@@ -511,7 +524,7 @@ async function signup(username, password) {
 // Function to sign in ------------------------------
 async function signin(username, password) {
   const fields = {username, password};
-  var url = `${API_URL}/signin`;
+  const url = `${API_URL}/signin`;
 
   // Fetch request
   await fetch(url, {
