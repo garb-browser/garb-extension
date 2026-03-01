@@ -932,6 +932,11 @@
     background: var(--highlight-read);
 }
 
+.garb-word-current {
+    background: var(--highlight-current);
+    border-radius: 3px;
+}
+
 /* Floating gaze bubble - Tobii-style organic blob with transparent center */
 .garb-gaze-bubble {
     background: radial-gradient(
