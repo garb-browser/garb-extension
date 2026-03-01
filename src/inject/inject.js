@@ -1924,6 +1924,17 @@
             const totalTime = Math.floor((Date.now() - window.startTime) / 1000);
 
             pageSessionData.timestampEnd = Date.now();
+
+            // Calculate WPM (words per minute)
+            const sessionDurationMs = pageSessionData.timestampEnd - pageSessionData.timestampStart;
+            const sessionDurationMin = sessionDurationMs / 60000;
+            const wordsRead = document.querySelectorAll('.garb-word-read').length;
+            if (sessionDurationMin > 0) {
+                pageSessionData.wpm = Math.round(wordsRead / sessionDurationMin);
+                pageSessionData.words_read = wordsRead;
+                pageSessionData.reading_duration_seconds = Math.round(sessionDurationMs / 1000);
+                console.log('GARB: WPM:', pageSessionData.wpm, '(' + wordsRead + ' words in ' + Math.round(sessionDurationMin * 10) / 10 + ' min)');
+            }
             pageSessionData.quadFreqs = quadFreqs;
             pageSessionData.sessionClosed = true;
 
@@ -1954,7 +1965,7 @@
             console.log("GARB: Saving session for user:", pageSessionData.user);
 
             // Use sendBeacon for reliable saving on page close (doesn't wait for response)
-            const beaconUrl = 'https://garb-api-service.onrender.com/pageSessions';
+            const beaconUrl = 'https://garb-api.fly.dev/pageSessions';
             const blob = new Blob([JSON.stringify(pageSessionData)], { type: 'application/json' });
             const beaconSent = navigator.sendBeacon(beaconUrl, blob);
             console.log("GARB: sendBeacon result:", beaconSent);
