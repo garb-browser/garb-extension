@@ -3,8 +3,8 @@
  * Handles authentication, API calls, and participant management
  */
 
-const API_URL = "https://garb-api-service.onrender.com";
-const DEFAULT_EXTRACT_URL = "https://garb-extraction-service.onrender.com";
+const API_URL = "https://garb-api.fly.dev";
+const DEFAULT_EXTRACT_URL = "https://garb-extraction.fly.dev";
 
 /**
  * Get the extraction service URL, checking chrome.storage.sync for a custom override.
