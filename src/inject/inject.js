@@ -1492,15 +1492,15 @@
         window.currentUser = null; // Will be set when user is retrieved
 
         // Try to get user from auth state immediately (for survey save)
-        safeSendMessage(
-            {action: "getAuthState"},
-            result => {
-                if (result && result.user) {
-                    window.currentUser = result.user;
+        try {
+            chrome.runtime.sendMessage({action: "getAuthState"}, response => {
+                if (chrome.runtime.lastError) return; // Silently ignore
+                if (response && response.user) {
+                    window.currentUser = response.user;
                     console.log("GARB: User set from auth state:", window.currentUser);
                 }
-            }
-        );
+            });
+        } catch (e) { /* ignore - non-critical */ }
 
         // Reset baseline mode state for new article
         resetBaselineMode();
