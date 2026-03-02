@@ -1491,6 +1491,17 @@
         window.eyeTrackingViewMode = 1;
         window.currentUser = null; // Will be set when user is retrieved
 
+        // Try to get user from auth state immediately (for survey save)
+        safeSendMessage(
+            {action: "getAuthState"},
+            result => {
+                if (result && result.user) {
+                    window.currentUser = result.user;
+                    console.log("GARB: User set from auth state:", window.currentUser);
+                }
+            }
+        );
+
         // Reset baseline mode state for new article
         resetBaselineMode();
 
