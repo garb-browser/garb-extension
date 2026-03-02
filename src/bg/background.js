@@ -322,12 +322,13 @@ chrome.runtime.onMessage.addListener(
                 }
                 return resp.json();
             })
-            .then(sessions => {
-                console.log("Found sessions:", sessions);
+            .then(response => {
+                console.log("Found sessions response:", response);
 
-                // Defensive check: ensure sessions is an array
+                // Handle both array and { value: [...] } response shapes
+                const sessions = Array.isArray(response) ? response : (response.value || response);
                 if (!Array.isArray(sessions)) {
-                    console.error("Expected array of sessions, got:", typeof sessions);
+                    console.error("Expected array of sessions, got:", typeof sessions, response);
                     throw new Error("Invalid response from server - expected array of sessions");
                 }
 

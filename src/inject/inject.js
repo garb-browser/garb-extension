@@ -70,6 +70,13 @@
     let highlightOffset = parseInt(localStorage.getItem('garb-highlight-offset')) || 0;
 
     // ========================================
+    // RULER STYLE (visual highlighting style)
+    // ========================================
+    // default, lightbox, shade, underline, grey-bar
+    let currentRulerStyle = localStorage.getItem('garb-ruler-style') || 'default';
+
+
+    // ========================================
     // PAUSE/LOCK STATE
     // ========================================
     let isPaused = false;
@@ -1410,6 +1417,16 @@
             });
         }
 
+        // Ruler style dropdown handler
+        const rulerSelect = document.getElementById('garb-ruler-style-select');
+        if (rulerSelect) {
+            rulerSelect.addEventListener('change', function() {
+                currentRulerStyle = this.value;
+                try { localStorage.setItem('garb-ruler-style', this.value); } catch (e) {}
+                document.body.setAttribute('data-ruler-style', this.value === 'default' ? '' : this.value);
+            });
+        }
+
         // Load saved preferences
         try {
             const savedTheme = localStorage.getItem('garb-theme');
@@ -1692,6 +1709,16 @@
                     </div>
                     <div class="garb-offset-value" id="garb-offset-value">${highlightOffset === -1 ? 'Word Before' : highlightOffset === 1 ? 'Word After' : 'Current Word'}</div>
                 </div>
+                <div class="garb-settings-section garb-ruler-style-section">
+                    <span class="garb-settings-label">Ruler Style</span>
+                    <select class="garb-ruler-style-select" id="garb-ruler-style-select">
+                        <option value="default"${currentRulerStyle === 'default' ? ' selected' : ''}>Default (GARB)</option>
+                        <option value="lightbox"${currentRulerStyle === 'lightbox' ? ' selected' : ''}>Lightbox</option>
+                        <option value="shade"${currentRulerStyle === 'shade' ? ' selected' : ''}>Shade</option>
+                        <option value="underline"${currentRulerStyle === 'underline' ? ' selected' : ''}>Underline</option>
+                        <option value="grey-bar"${currentRulerStyle === 'grey-bar' ? ' selected' : ''}>Grey Bar</option>
+                    </select>
+                </div>
                 <div class="garb-settings-footer">
                     <label class="garb-autoscroll-compact" title="Toggle auto-scroll (A)">
                         <input type="checkbox" id="garb-autoscroll-checkbox">
@@ -1739,7 +1766,7 @@
     <title>${escapeHtml(result.title)} - Reading Mode</title>
     ${criticalCSS}
 </head>
-<body class="garb-reader theme-gray font-serif size-medium" data-zoom="100" data-mode="${currentTrackingMode}">
+<body class="garb-reader theme-gray font-serif size-medium" data-zoom="100" data-mode="${currentTrackingMode}" data-ruler-style="${currentRulerStyle === 'default' ? '' : currentRulerStyle}">
     ${progressBar}
     ${sourceBar}
     ${settingsPanel}
