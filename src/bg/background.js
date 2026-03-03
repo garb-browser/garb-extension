@@ -327,9 +327,7 @@ chrome.runtime.onMessage.addListener(
         // First get the most recent session for this user/url to update it
         const encodedUrl = encodeURIComponent(request.data.url);
         const getUrl = `${API_URL}/pageSessions/${user}/${encodedUrl}`;
-        console.log("SURVEY DEBUG - user:", user, "url:", request.data.url, "encodedUrl:", encodedUrl);
-        console.log("SURVEY DEBUG - full getUrl:", getUrl);
-        console.log("SURVEY DEBUG - request.data:", JSON.stringify(request.data).substring(0, 500));
+        console.log("Fetching sessions from:", getUrl);
 
         fetch(getUrl)
             .then(resp => {
