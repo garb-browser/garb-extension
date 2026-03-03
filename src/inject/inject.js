@@ -1490,6 +1490,7 @@
         window.targetSiteURL = location.href;
         window.eyeTrackingViewMode = 1;
         window.currentUser = null; // Will be set when user is retrieved
+        window.currentSessionId = null; // Will be set when session is saved to DB
 
         // Try to get user from auth state immediately (for survey save)
         try {
@@ -2012,6 +2013,11 @@
             safeSendMessage({
                 contentScriptQuery: "saveToDatabase",
                 data: pageSessionData
+            }, (response) => {
+                if (response && response._id) {
+                    window.currentSessionId = response._id;
+                    console.log("GARB: Session ID saved:", window.currentSessionId);
+                }
             });
 
             safeSendMessage({
@@ -4805,6 +4811,7 @@
             data: {
                 user: window.currentUser,
                 url: window.targetSiteURL,
+                sessionId: window.currentSessionId,
                 survey_responses: surveyResponses,
                 survey_completed_at: Date.now()
             }

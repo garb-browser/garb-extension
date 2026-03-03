@@ -302,7 +302,21 @@ chrome.runtime.onMessage.addListener(
       else if (request.contentScriptQuery == "saveSurveyResponses") {
         console.log("Saving survey responses", request.data);
 
-        // Get user from request data or fall back to authUser
+        // Fast path: if we have a session ID, PATCH directly (no lookup needed)
+        if (request.data.sessionId) {
+            console.log("GARB: Direct survey save to session:", request.data.sessionId);
+            fetch(`${API_URL}/pageSessions/${request.data.sessionId}`, {
+                method: "PATCH",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ survey_responses: request.data.survey_responses })
+            })
+            .then(resp => { if (!resp.ok) throw new Error(`PATCH failed: ${resp.status}`); return resp.json(); })
+            .then(data => { console.log("Survey saved:", data); sendResponse({ success: true, data }); })
+            .catch(error => { console.error("Direct save failed:", error); sendResponse({ success: false, error: error.message }); });
+            return true;
+        }
+
+        // Fallback: lookup by user/url
         const user = request.data.user || authUser;
         if (!user) {
             console.error("No user found for saving survey");
@@ -313,7 +327,9 @@ chrome.runtime.onMessage.addListener(
         // First get the most recent session for this user/url to update it
         const encodedUrl = encodeURIComponent(request.data.url);
         const getUrl = `${API_URL}/pageSessions/${user}/${encodedUrl}`;
-        console.log("Fetching sessions from:", getUrl);
+        console.log("SURVEY DEBUG - user:", user, "url:", request.data.url, "encodedUrl:", encodedUrl);
+        console.log("SURVEY DEBUG - full getUrl:", getUrl);
+        console.log("SURVEY DEBUG - request.data:", JSON.stringify(request.data).substring(0, 500));
 
         fetch(getUrl)
             .then(resp => {
