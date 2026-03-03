@@ -937,6 +937,90 @@
     border-radius: 3px;
 }
 
+
+/* ========================================
+   RULER STYLE VARIATIONS
+   Based on Niklaus et al. CHI '23 Digital Reading Rulers
+   Styles: default, lightbox, shade, underline, grey-bar
+   ======================================== */
+
+/* Default ruler style - standard GARB highlighting (no overrides needed) */
+
+/* Lightbox: dims everything except the active line */
+.garb-reader[data-ruler-style="lightbox"] .garb-line {
+    opacity: 0.25;
+    transition: opacity 0.2s ease, background 0.15s ease;
+}
+.garb-reader[data-ruler-style="lightbox"] .garb-line-active {
+    opacity: 1;
+    background: var(--highlight-line-active);
+}
+.garb-reader[data-ruler-style="lightbox"] .garb-line-complete {
+    opacity: 0.4;
+}
+
+/* Shade: covers text above the current reading position */
+.garb-reader[data-ruler-style="shade"] .garb-line-complete {
+    background: rgba(0, 0, 0, 0.15);
+}
+.garb-reader[data-ruler-style="shade"] .garb-line-active {
+    background: var(--highlight-line-active);
+}
+/* Dark theme shade adjustment */
+.garb-reader.theme-dark[data-ruler-style="shade"] .garb-line-complete {
+    background: rgba(255, 255, 255, 0.08);
+}
+
+/* Underline: thin colored line under the active line */
+.garb-reader[data-ruler-style="underline"] .garb-line-active {
+    background: none;
+    border-bottom: 3px solid var(--highlight-current, rgba(245, 222, 120, 0.7));
+    padding-bottom: 1px;
+    border-radius: 0;
+}
+.garb-reader[data-ruler-style="underline"] .garb-line-complete {
+    background: none;
+}
+
+/* Grey Bar: full-width horizontal bar on the active line only */
+.garb-reader[data-ruler-style="grey-bar"] .garb-line-active {
+    background: rgba(128, 128, 128, 0.2);
+    border-radius: 2px;
+}
+.garb-reader[data-ruler-style="grey-bar"] .garb-line-complete {
+    background: none;
+}
+/* Dark theme grey bar adjustment */
+.garb-reader.theme-dark[data-ruler-style="grey-bar"] .garb-line-active {
+    background: rgba(200, 200, 200, 0.12);
+}
+
+/* Ruler style selector in settings */
+.garb-ruler-style-section {
+    margin-top: 4px;
+}
+.garb-ruler-style-select {
+    width: 100%;
+    padding: 6px 10px;
+    border-radius: 8px;
+    border: 1px solid var(--border);
+    background: var(--bg);
+    color: var(--text);
+    font-size: 13px;
+    font-family: inherit;
+    cursor: pointer;
+    appearance: none;
+    -webkit-appearance: none;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%23666' d='M3 4.5L6 8l3-3.5H3z'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 8px center;
+}
+.garb-ruler-style-select:focus {
+    outline: none;
+    border-color: var(--accent, #3b82f6);
+    box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.15);
+}
+
 /* Floating gaze bubble - Tobii-style organic blob with transparent center */
 .garb-gaze-bubble {
     background: radial-gradient(

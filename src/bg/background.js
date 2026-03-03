@@ -302,7 +302,21 @@ chrome.runtime.onMessage.addListener(
       else if (request.contentScriptQuery == "saveSurveyResponses") {
         console.log("Saving survey responses", request.data);
 
-        // Get user from request data or fall back to authUser
+        // Fast path: if we have a session ID, PATCH directly (no lookup needed)
+        if (request.data.sessionId) {
+            console.log("GARB: Direct survey save to session:", request.data.sessionId);
+            fetch(`${API_URL}/pageSessions/${request.data.sessionId}`, {
+                method: "PATCH",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ survey_responses: request.data.survey_responses })
+            })
+            .then(resp => { if (!resp.ok) throw new Error(`PATCH failed: ${resp.status}`); return resp.json(); })
+            .then(data => { console.log("Survey saved:", data); sendResponse({ success: true, data }); })
+            .catch(error => { console.error("Direct save failed:", error); sendResponse({ success: false, error: error.message }); });
+            return true;
+        }
+
+        // Fallback: lookup by user/url
         const user = request.data.user || authUser;
         if (!user) {
             console.error("No user found for saving survey");
@@ -322,12 +336,13 @@ chrome.runtime.onMessage.addListener(
                 }
                 return resp.json();
             })
-            .then(sessions => {
-                console.log("Found sessions:", sessions);
+            .then(response => {
+                console.log("Found sessions response:", response);
 
-                // Defensive check: ensure sessions is an array
+                // Handle both array and { value: [...] } response shapes
+                const sessions = Array.isArray(response) ? response : (response.value || response);
                 if (!Array.isArray(sessions)) {
-                    console.error("Expected array of sessions, got:", typeof sessions);
+                    console.error("Expected array of sessions, got:", typeof sessions, response);
                     throw new Error("Invalid response from server - expected array of sessions");
                 }
 
