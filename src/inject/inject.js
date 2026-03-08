@@ -129,7 +129,7 @@
     const gazeState = {
         // EMA Smoothing
         ema: { x: null, y: null },
-        emaAlpha: 0.3,
+        emaAlpha: 0.5,
 
         // Velocity & Saccade Detection
         velocity: { x: 0, y: 0, magnitude: 0 },
@@ -703,7 +703,7 @@
          */
         getProcessingMethods() {
             return {
-                smoothing: "EMA (alpha=0.3, adaptive based on velocity)",
+                smoothing: "EMA (alpha=0.5, adaptive based on velocity)",
                 fixation_detection: "I-VT (velocity threshold 30px/sample, min duration 100ms)",
                 saccade_detection: "Velocity threshold (800px/sec, 50ms freeze period)",
                 line_lock: "Hysteresis (time=" + gazeState.lineLockDurationMs + "ms, margin=" + gazeState.lineMarginThreshold + "px)",
@@ -2630,9 +2630,9 @@
         // Adaptive alpha: faster response during movement, more smoothing when stable
         let alpha = gazeState.emaAlpha;
         if (velocity.magnitude > 200) {
-            alpha = Math.min(0.6, gazeState.emaAlpha * 1.5);
+            alpha = Math.min(0.7, gazeState.emaAlpha * 1.4);
         } else if (velocity.magnitude < 50) {
-            alpha = Math.max(0.15, gazeState.emaAlpha * 0.7);
+            alpha = Math.max(0.35, gazeState.emaAlpha * 0.7);
         }
 
         // Apply EMA
