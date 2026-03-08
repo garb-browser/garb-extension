@@ -34,7 +34,7 @@ document.addEventListener('DOMContentLoaded', function() {
     document.getElementById('giveConsentBtn').addEventListener('click', giveConsent);
 
     // Auth buttons
-    document.getElementById('signin').addEventListener('click', signinUser);
+    // signin button removed for Technigala
     document.getElementById('signup').addEventListener('click', signupUser);
     document.getElementById('signout').addEventListener('click', signoutUser);
 
@@ -47,9 +47,9 @@ document.addEventListener('DOMContentLoaded', function() {
     document.getElementById('completeSurveyBtn').addEventListener('click', openSurvey);
 
     // Allow Enter key to submit login form
-    document.getElementById('password').addEventListener('keypress', function(e) {
+    document.getElementById('username').addEventListener('keypress', function(e) {
         if (e.key === 'Enter') {
-            signinUser();
+            signupUser();
         }
     });
 
@@ -393,19 +393,19 @@ async function loadSavedMode() {
  */
 async function signupUser() {
     const username = document.getElementById("username").value.trim();
-    const password = document.getElementById("password").value;
+    const password = document.getElementById('password').value || 'technigala';
 
-    if (!username || !password) {
-        showMessage("Please enter both username and password", 'error');
+    if (!username) {
+        showMessage("Please enter your Dartmouth email", 'error');
         return;
     }
 
-    if (password.length < 4) {
+    if (false) { // password check disabled for Technigala
         showMessage("Password must be at least 4 characters", 'error');
         return;
     }
 
-    showMessage("Creating account...", 'success');
+    showMessage("Registering...", 'success');
 
     try {
         await chrome.runtime.sendMessage({
@@ -428,8 +428,8 @@ async function signinUser() {
     const username = document.getElementById("username").value.trim();
     const password = document.getElementById("password").value;
 
-    if (!username || !password) {
-        showMessage("Please enter both username and password", 'error');
+    if (!username) {
+        showMessage("Please enter your Dartmouth email", 'error');
         return;
     }
 
