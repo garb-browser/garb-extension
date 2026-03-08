@@ -881,6 +881,54 @@
      * Deactivate tracking and restore original page with exit animation
      */
     function deactivateTracking() {
+        // Save session data FIRST (before navigation kills the page context)
+        if (window.currentSessionId && typeof dataLogger !== 'undefined' && dataLogger) {
+            console.log('GARB: Saving session data before deactivation...');
+            try {
+                dataLogger.updateTextPresence(false);
+                const gazeResult = dataLogger.getSizeSafeGazeData(400000);
+                const wordsRead = document.querySelectorAll('.garb-word-read').length;
+                const sessionDurationMs = Date.now() - (window.startTime || Date.now());
+                const sessionDurationMin = sessionDurationMs / 60000;
+
+                const saveData = {
+                    timestampEnd: Date.now(),
+                    sessionClosed: true,
+                    summary: dataLogger.getSummary(),
+                    gaze_events_jsonl: gazeResult.data,
+                    ui_events_jsonl: dataLogger.uiToJSONL(),
+                    settings_snapshot: dataLogger.getSettingsSnapshot(),
+                    device_metadata: dataLogger.getDeviceMetadata(),
+                    processing_methods: dataLogger.getProcessingMethods(),
+                    wpm: sessionDurationMin > 0 ? Math.round(wordsRead / sessionDurationMin) : 0,
+                    words_read: wordsRead,
+                    reading_duration_seconds: Math.round(sessionDurationMs / 1000)
+                };
+                if (gazeResult.sampled) {
+                    saveData.gaze_data_sampled = true;
+                    saveData.gaze_sampling_ratio = gazeResult.samplingRatio;
+                    saveData.gaze_original_count = gazeResult.originalCount;
+                }
+
+                // Send via background script (service worker persists after page dies)
+                safeSendMessage({
+                    contentScriptQuery: 'updateSession',
+                    sessionId: window.currentSessionId,
+                    data: saveData
+                }, (response) => {
+                    if (response && response.success) {
+                        console.log('GARB: Session saved successfully via background');
+                    } else {
+                        console.warn('GARB: Session save response:', response);
+                    }
+                });
+                // Mark as saved so beforeunload doesn't double-save
+                window._garbSessionSaved = true;
+            } catch (e) {
+                console.error('GARB: Error saving session on deactivate:', e);
+            }
+        }
+
         // Close WebSocket
         if (window.eyeTrackingWebSocket) {
             window.eyeTrackingWebSocket.close();
@@ -2053,7 +2101,9 @@
             console.log("GARB: Saving session for user:", pageSessionData.user);
 
             // Option B: PATCH existing session with gaze data (session created on activation)
-            if (window.currentSessionId) {
+            if (window._garbSessionSaved) {
+                console.log('GARB: Session already saved on deactivate, skipping beforeunload save');
+            } else if (window.currentSessionId) {
                 console.log('GARB: PATCHing session', window.currentSessionId, 'with gaze data');
                 // Use sendBeacon for reliable saving on page close
                 const beaconUrl = 'https://garb-api.fly.dev/pageSessions/' + window.currentSessionId;
