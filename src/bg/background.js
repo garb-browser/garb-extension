@@ -230,7 +230,8 @@ chrome.runtime.onMessage.addListener(
         fetch(API_URL + '/pageSessions/create', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(request.data)
+            body: JSON.stringify(request.data),
+            keepalive: true
         })
         .then(resp => { if (!resp.ok) throw new Error('Create failed: ' + resp.status); return resp.json(); })
         .then(data => {
@@ -250,7 +251,8 @@ chrome.runtime.onMessage.addListener(
         fetch(API_URL + '/pageSessions/' + request.sessionId, {
             method: 'PATCH',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(request.data)
+            body: JSON.stringify(request.data),
+            keepalive: true
         })
         .then(resp => { if (!resp.ok) throw new Error('Update failed: ' + resp.status); return resp.json(); })
         .then(data => {
