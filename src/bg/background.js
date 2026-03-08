@@ -224,6 +224,47 @@ chrome.runtime.onMessage.addListener(
         return true;  // Will respond asynchronously.
       }
 
+      // Create a new session on activation (Option B: session-first flow)
+      else if (request.contentScriptQuery == 'createSession') {
+        console.log('GARB: Creating session on activation for user:', request.data?.user);
+        fetch(API_URL + '/pageSessions/create', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(request.data)
+        })
+        .then(resp => { if (!resp.ok) throw new Error('Create failed: ' + resp.status); return resp.json(); })
+        .then(data => {
+            console.log('GARB: Session created:', data.sessionId);
+            sendResponse({ sessionId: data.sessionId });
+        })
+        .catch(error => {
+            console.error('GARB: Session creation failed:', error);
+            sendResponse({ error: error.message });
+        });
+        return true;
+      }
+
+      // Update an existing session by ID (PATCH with gaze data on deactivation)
+      else if (request.contentScriptQuery == 'updateSession') {
+        console.log('GARB: Updating session', request.sessionId, 'with gaze data');
+        fetch(API_URL + '/pageSessions/' + request.sessionId, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(request.data)
+        })
+        .then(resp => { if (!resp.ok) throw new Error('Update failed: ' + resp.status); return resp.json(); })
+        .then(data => {
+            console.log('GARB: Session updated:', data);
+            sendResponse({ success: true });
+        })
+        .catch(error => {
+            console.error('GARB: Session update failed:', error);
+            sendResponse({ error: error.message });
+        });
+        return true;
+      }
+
+
       // Request to save the current pagesession data to the database
       else if (request.contentScriptQuery == "saveToDatabase") {
         // Validate request data

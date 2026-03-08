@@ -1915,6 +1915,27 @@
                     settings_snapshot: dataLogger ? dataLogger.getSettingsSnapshot() : null
                 };
 
+
+                // Option B: Create session in DB immediately on activation
+                // This gives us a session ID for survey + deactivation PATCHes
+                safeSendMessage({
+                    contentScriptQuery: 'createSession',
+                    data: {
+                        url: pageSessionData.url,
+                        title: pageSessionData.title,
+                        user: pageSessionData.user,
+                        timestampStart: pageSessionData.timestampStart,
+                        sessionClosed: false
+                    }
+                }, (response) => {
+                    if (response && response.sessionId) {
+                        window.currentSessionId = response.sessionId;
+                        console.log('GARB: Session created with ID:', window.currentSessionId);
+                    } else {
+                        console.warn('GARB: Failed to create session on activation:', response);
+                    }
+                });
+
                 runWebSocket(quadFreqs, dbQuadFreqs, pageSessionData);
             }
         );
@@ -2003,22 +2024,37 @@
 
             console.log("GARB: Saving session for user:", pageSessionData.user);
 
-            // Use sendBeacon for reliable saving on page close (doesn't wait for response)
-            const beaconUrl = 'https://garb-api.fly.dev/pageSessions';
-            const blob = new Blob([JSON.stringify(pageSessionData)], { type: 'application/json' });
-            const beaconSent = navigator.sendBeacon(beaconUrl, blob);
-            console.log("GARB: sendBeacon result:", beaconSent);
-
-            // Also try the normal message as backup
-            safeSendMessage({
-                contentScriptQuery: "saveToDatabase",
-                data: pageSessionData
-            }, (response) => {
-                if (response && response._id) {
-                    window.currentSessionId = response._id;
-                    console.log("GARB: Session ID saved:", window.currentSessionId);
-                }
-            });
+            // Option B: PATCH existing session with gaze data (session created on activation)
+            if (window.currentSessionId) {
+                console.log('GARB: PATCHing session', window.currentSessionId, 'with gaze data');
+                // Use sendBeacon for reliable saving on page close
+                const beaconUrl = 'https://garb-api.fly.dev/pageSessions/' + window.currentSessionId;
+                // sendBeacon only supports POST, so use fetch with keepalive for PATCH
+                fetch(beaconUrl, {
+                    method: 'PATCH',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(pageSessionData),
+                    keepalive: true
+                }).then(r => console.log('GARB: Session PATCH status:', r.status))
+                  .catch(e => console.error('GARB: Session PATCH error:', e));
+                
+                // Also try via background script as backup
+                safeSendMessage({
+                    contentScriptQuery: 'updateSession',
+                    sessionId: window.currentSessionId,
+                    data: pageSessionData
+                });
+            } else {
+                // Fallback: no session ID, POST as before
+                console.warn('GARB: No session ID, falling back to POST');
+                const beaconUrl = 'https://garb-api.fly.dev/pageSessions';
+                const blob = new Blob([JSON.stringify(pageSessionData)], { type: 'application/json' });
+                navigator.sendBeacon(beaconUrl, blob);
+                safeSendMessage({
+                    contentScriptQuery: 'saveToDatabase',
+                    data: pageSessionData
+                });
+            }
 
             safeSendMessage({
                 contentScriptQuery: "showDistractionMetric",
