@@ -454,7 +454,13 @@ async function signinUser() {
  * Sign out current user
  */
 function signoutUser() {
-    chrome.runtime.sendMessage({ action: "signout" });
+    // Deactivate reader mode on active tab before signing out
+    chrome.tabs.query({ active: true, currentWindow: true }, function(tabs) {
+        if (tabs[0]) {
+            chrome.tabs.sendMessage(tabs[0].id, { action: 'deactivate' }).catch(() => {});
+        }
+    });
+    chrome.runtime.sendMessage({ action: 'signout' });
     isActivated = false;
     updateStatus('disconnected', 'Not activated');
     updateRender();

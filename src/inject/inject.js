@@ -1411,8 +1411,8 @@
         if (offsetSlider) {
             offsetSlider.addEventListener('input', function() {
                 highlightOffset = parseInt(this.value);
-                const labels = { '-1': 'Word Before', '0': 'Current Word', '1': 'Word After' };
-                if (offsetValue) offsetValue.textContent = labels[this.value] || 'Current Word';
+                const labels = {}; const v = parseInt(this.value); const lbl = v === 0 ? 'Current Word' : v > 0 ? '+' + v + ' Words After' : v + ' Words Before';
+                if (offsetValue) offsetValue.textContent = lbl;
                 try { localStorage.setItem('garb-highlight-offset', this.value); } catch (e) {}
             });
         }
@@ -1716,10 +1716,10 @@
                     <span class="garb-settings-label">Highlight Position</span>
                     <div class="garb-highlight-offset-control">
                         <span class="garb-offset-label-left">Before</span>
-                        <input type="range" class="garb-offset-slider" id="garb-offset-slider" min="-1" max="1" step="1" value="${highlightOffset}">
+                        <input type="range" class="garb-offset-slider" id="garb-offset-slider" min="-5" max="5" step="1" value="${highlightOffset}">
                         <span class="garb-offset-label-right">After</span>
                     </div>
-                    <div class="garb-offset-value" id="garb-offset-value">${highlightOffset === -1 ? 'Word Before' : highlightOffset === 1 ? 'Word After' : 'Current Word'}</div>
+                    <div class="garb-offset-value" id="garb-offset-value">${(highlightOffset === 0 ? 'Current Word' : highlightOffset > 0 ? '+' + highlightOffset + ' Words After' : highlightOffset + ' Words Before')}</div>
                 </div>
                 <div class="garb-settings-section garb-ruler-style-section">
                     <span class="garb-settings-label">Ruler Style</span>
@@ -4530,11 +4530,18 @@
      * Custom GARB Scale Questions
      */
     const GARB_CUSTOM_QUESTIONS = [
+        // Reading assistance effectiveness
         { id: 'helped_keep_place', text: 'The highlighting helped me keep my place while reading.' },
-        { id: 'reduced_rereading', text: 'I had to re-read less often with the eye tracking active.' },
-        { id: 'felt_natural', text: 'The tracking felt natural and unobtrusive.' },
-        { id: 'tracking_accuracy', text: 'The tracking accurately followed where I was reading.' },
-        { id: 'would_use_again', text: 'I would use this extension again for reading.' }
+        { id: 'reduced_rereading', text: 'I had to re-read less often with the highlighting active.' },
+        { id: 'improved_focus', text: 'The extension helped me stay focused on the text.' },
+        // Gaze tracking quality
+        { id: 'tracking_accuracy', text: 'The gaze tracking accurately followed where I was reading.' },
+        { id: 'felt_natural', text: 'The tracking felt natural and non-distracting.' },
+        { id: 'tracking_latency', text: 'The highlight responded quickly enough to my eye movements.' },
+        // Comprehension & engagement
+        { id: 'comprehension', text: 'I feel I understood the article better with the extension active.' },
+        // Overall
+        { id: 'would_use_again', text: 'I would use this extension again for everyday reading.' }
     ];
 
     // Survey state
