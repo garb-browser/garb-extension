@@ -2701,7 +2701,7 @@
             // Use a gaze target biased toward the upper portion of the line.
             // When reading, eyes focus on the x-height (upper ~40% of the line box),
             // not the geometric center (which includes descenders + line spacing).
-            const gazeTarget = lineRect.top + lineRect.height * 0.4;
+            const gazeTarget = lineRect.top + lineRect.height * 0.5;
             const distance = Math.abs(gazeY - gazeTarget);
 
             if (distance < bestDistance) {
