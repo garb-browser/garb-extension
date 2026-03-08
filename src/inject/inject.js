@@ -1716,7 +1716,7 @@
                     <span class="garb-settings-label">Highlight Position</span>
                     <div class="garb-highlight-offset-control">
                         <span class="garb-offset-label-left">Before</span>
-                        <input type="range" class="garb-offset-slider" id="garb-offset-slider" min="-5" max="5" step="1" value="${highlightOffset}">
+                        <input type="range" class="garb-offset-slider" id="garb-offset-slider" min="-3" max="3" step="1" value="${highlightOffset}">
                         <span class="garb-offset-label-right">After</span>
                     </div>
                     <div class="garb-offset-value" id="garb-offset-value">${(highlightOffset === 0 ? 'Current Word' : highlightOffset > 0 ? '+' + highlightOffset + ' Words After' : highlightOffset + ' Words Before')}</div>
