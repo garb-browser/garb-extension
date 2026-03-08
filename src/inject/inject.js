@@ -1418,12 +1418,34 @@
         }
 
         // Ruler style dropdown handler
-        const rulerSelect = document.getElementById('garb-ruler-style-select');
-        if (rulerSelect) {
-            rulerSelect.addEventListener('change', function() {
-                currentRulerStyle = this.value;
-                try { localStorage.setItem('garb-ruler-style', this.value); } catch (e) {}
-                document.body.setAttribute('data-ruler-style', this.value === 'default' ? '' : this.value);
+        // Custom dropdown handler for ruler style
+        const selectTrigger = document.getElementById('garb-select-trigger');
+        const selectOptions = document.getElementById('garb-select-options');
+        const selectLabel = document.getElementById('garb-select-label');
+        if (selectTrigger && selectOptions) {
+            selectTrigger.addEventListener('click', function(e) {
+                e.stopPropagation();
+                selectOptions.classList.toggle('open');
+                selectTrigger.classList.toggle('open');
+            });
+            selectOptions.querySelectorAll('.garb-select-option').forEach(opt => {
+                opt.addEventListener('click', function(e) {
+                    e.stopPropagation();
+                    const val = this.dataset.value;
+                    currentRulerStyle = val;
+                    if (selectLabel) selectLabel.textContent = this.textContent;
+                    selectOptions.querySelectorAll('.garb-select-option').forEach(o => o.classList.remove('active'));
+                    this.classList.add('active');
+                    selectOptions.classList.remove('open');
+                    selectTrigger.classList.remove('open');
+                    try { localStorage.setItem('garb-ruler-style', val); } catch (e) {}
+                    document.body.setAttribute('data-ruler-style', val === 'default' ? '' : val);
+                });
+            });
+            // Close on click outside
+            document.addEventListener('click', function() {
+                selectOptions.classList.remove('open');
+                selectTrigger.classList.remove('open');
             });
         }
 
@@ -1723,13 +1745,19 @@
                 </div>
                 <div class="garb-settings-section garb-ruler-style-section">
                     <span class="garb-settings-label">Ruler Style</span>
-                    <select class="garb-ruler-style-select" id="garb-ruler-style-select">
-                        <option value="default"${currentRulerStyle === 'default' ? ' selected' : ''}>Default (GARB)</option>
-                        <option value="lightbox"${currentRulerStyle === 'lightbox' ? ' selected' : ''}>Lightbox</option>
-                        <option value="shade"${currentRulerStyle === 'shade' ? ' selected' : ''}>Shade</option>
-                        <option value="underline"${currentRulerStyle === 'underline' ? ' selected' : ''}>Underline</option>
-                        <option value="grey-bar"${currentRulerStyle === 'grey-bar' ? ' selected' : ''}>Grey Bar</option>
-                    </select>
+                    <div class="garb-custom-select" id="garb-ruler-style-wrapper">
+                        <div class="garb-select-trigger" id="garb-select-trigger">
+                            <span id="garb-select-label">${{'default':'Default (GARB)','lightbox':'Lightbox','shade':'Shade','underline':'Underline','grey-bar':'Grey Bar'}[currentRulerStyle] || 'Default (GARB)'}</span>
+                            <svg width="10" height="6" viewBox="0 0 10 6"><path fill="currentColor" d="M0 0l5 6 5-6z"/></svg>
+                        </div>
+                        <div class="garb-select-options" id="garb-select-options">
+                            <div class="garb-select-option${currentRulerStyle === 'default' ? ' active' : ''}" data-value="default">Default (GARB)</div>
+                            <div class="garb-select-option${currentRulerStyle === 'lightbox' ? ' active' : ''}" data-value="lightbox">Lightbox</div>
+                            <div class="garb-select-option${currentRulerStyle === 'shade' ? ' active' : ''}" data-value="shade">Shade</div>
+                            <div class="garb-select-option${currentRulerStyle === 'underline' ? ' active' : ''}" data-value="underline">Underline</div>
+                            <div class="garb-select-option${currentRulerStyle === 'grey-bar' ? ' active' : ''}" data-value="grey-bar">Grey Bar</div>
+                        </div>
+                    </div>
                 </div>
                 <div class="garb-settings-footer">
                     <label class="garb-autoscroll-compact" title="Toggle auto-scroll (A)">

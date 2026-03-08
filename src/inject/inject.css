@@ -999,34 +999,7 @@
 .garb-ruler-style-section {
     margin-top: 4px;
 }
-.garb-ruler-style-select {
-    width: 100%;
-    padding: 8px 32px 8px 12px;
-    border-radius: 10px;
-    border: 1.5px solid rgba(255,255,255,0.12);
-    background: rgba(255,255,255,0.06);
-    color: inherit;
-    font-size: 13px;
-    font-weight: 500;
-    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-    cursor: pointer;
-    appearance: none;
-    -webkit-appearance: none;
-    transition: all 0.2s ease;
-    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath fill='%23999' d='M0 0l5 6 5-6z'/%3E%3C/svg%3E");
-    background-repeat: no-repeat;
-    background-position: right 12px center;
-    backdrop-filter: blur(8px);
-}
-.garb-ruler-style-select:hover {
-    border-color: rgba(255,255,255,0.25);
-    background: rgba(255,255,255,0.1);
-}
-.garb-ruler-style-select:focus {
-    outline: none;
-    border-color: #3b82f6;
-    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.2);
-}
+
 
 /* Floating gaze bubble - Tobii-style organic blob with transparent center */
 .garb-gaze-bubble {
@@ -1936,4 +1909,122 @@
 .garb-calibration-badge.calibrated {
     background: rgba(0, 180, 80, 0.15);
     color: #00b450;
+}
+
+/* Custom dropdown (replaces native <select>) */
+.garb-custom-select {
+    position: relative;
+    width: 100%;
+}
+.garb-select-trigger {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 8px 12px;
+    border-radius: 10px;
+    border: 1.5px solid rgba(255,255,255,0.12);
+    background: rgba(255,255,255,0.06);
+    color: inherit;
+    font-size: 13px;
+    font-weight: 500;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    backdrop-filter: blur(8px);
+    user-select: none;
+}
+.garb-select-trigger:hover {
+    border-color: rgba(255,255,255,0.25);
+    background: rgba(255,255,255,0.1);
+}
+.garb-select-trigger.open {
+    border-color: #3b82f6;
+    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.2);
+}
+.garb-select-trigger svg {
+    opacity: 0.5;
+    transition: transform 0.2s ease;
+    flex-shrink: 0;
+    margin-left: 8px;
+}
+.garb-select-trigger.open svg {
+    transform: rotate(180deg);
+}
+.garb-select-options {
+    display: none;
+    position: absolute;
+    top: calc(100% + 4px);
+    left: 0;
+    right: 0;
+    z-index: 1000;
+    border-radius: 10px;
+    border: 1.5px solid rgba(255,255,255,0.12);
+    background: rgba(40, 40, 45, 0.95);
+    backdrop-filter: blur(16px);
+    box-shadow: 0 8px 32px rgba(0,0,0,0.3), 0 2px 8px rgba(0,0,0,0.2);
+    overflow: hidden;
+    animation: garb-dropdown-in 0.15s ease;
+}
+.garb-select-options.open {
+    display: block;
+}
+@keyframes garb-dropdown-in {
+    from { opacity: 0; transform: translateY(-4px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+.garb-select-option {
+    padding: 9px 12px;
+    font-size: 13px;
+    font-weight: 400;
+    color: rgba(255,255,255,0.8);
+    cursor: pointer;
+    transition: all 0.12s ease;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+}
+.garb-select-option:hover {
+    background: rgba(255,255,255,0.08);
+    color: #fff;
+}
+.garb-select-option.active {
+    background: rgba(59, 130, 246, 0.15);
+    color: #60a5fa;
+    font-weight: 500;
+}
+.garb-select-option + .garb-select-option {
+    border-top: 1px solid rgba(255,255,255,0.06);
+}
+
+/* Light theme overrides */
+.theme-white .garb-select-trigger,
+.theme-cream .garb-select-trigger {
+    border-color: rgba(0,0,0,0.12);
+    background: rgba(0,0,0,0.04);
+}
+.theme-white .garb-select-trigger:hover,
+.theme-cream .garb-select-trigger:hover {
+    background: rgba(0,0,0,0.08);
+}
+.theme-white .garb-select-options,
+.theme-cream .garb-select-options {
+    background: rgba(255, 255, 255, 0.97);
+    border-color: rgba(0,0,0,0.1);
+    box-shadow: 0 8px 32px rgba(0,0,0,0.12), 0 2px 8px rgba(0,0,0,0.06);
+}
+.theme-white .garb-select-option,
+.theme-cream .garb-select-option {
+    color: rgba(0,0,0,0.7);
+}
+.theme-white .garb-select-option:hover,
+.theme-cream .garb-select-option:hover {
+    background: rgba(0,0,0,0.05);
+    color: #000;
+}
+.theme-white .garb-select-option.active,
+.theme-cream .garb-select-option.active {
+    background: rgba(59, 130, 246, 0.1);
+    color: #2563eb;
+}
+.theme-white .garb-select-option + .garb-select-option,
+.theme-cream .garb-select-option + .garb-select-option {
+    border-top-color: rgba(0,0,0,0.06);
 }
