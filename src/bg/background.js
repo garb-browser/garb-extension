@@ -365,7 +365,22 @@ chrome.runtime.onMessage.addListener(
                         })
                     });
                 } else {
-                    throw new Error("No session found to update");
+                    // Technigala: no session exists yet, create one with survey data
+                    console.log("GARB: No session found, creating new session with survey data");
+                    return fetch(API_URL + '/pageSessions', {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({
+                            url: request.data.url,
+                            user: user,
+                            title: "Survey-only session",
+                            timestampStart: Date.now() - 60000,
+                            timestampEnd: Date.now(),
+                            sessionClosed: true,
+                            survey_responses: request.data.survey_responses,
+                            survey_completed_at: request.data.survey_completed_at
+                        })
+                    });
                 }
             })
             .then(resp => {

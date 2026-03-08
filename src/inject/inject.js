@@ -4652,7 +4652,7 @@
         let completedAll = Object.keys(surveyResponses.nasa_tlx).length +
                           surveyResponses.sus.responses.filter(v => v !== null).length +
                           Object.keys(surveyResponses.custom_garb).length;
-        const progressPercent = Math.round((completedAll / totalAll) * 100);
+        const progressPercent = Math.min(100, Math.round((completedAll / totalAll) * 100));
 
         surveyModal.innerHTML = `
             <div class="garb-modal">
