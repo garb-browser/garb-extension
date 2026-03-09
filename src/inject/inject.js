@@ -366,7 +366,7 @@
             }
 
             // Fixation detection (I-VT algorithm)
-            const FIXATION_VELOCITY_THRESHOLD = 30; // px/sample
+            const FIXATION_VELOCITY_THRESHOLD = 200; // px/sec (I-VT threshold for consumer tracker)
             const FIXATION_MIN_DURATION_MS = 100;
 
             const isSaccade = velocity.magnitude >= FIXATION_VELOCITY_THRESHOLD;
@@ -1983,6 +1983,7 @@
                     url: window.targetSiteURL,
                     title: document.querySelector('.garb-title')?.textContent || 'Unknown',
                     user: userData.user,
+                    study_condition: currentTrackingMode || 'gaze',
                     timestampStart: Date.now(),
                     timestampEnd: null,
                     sessionClosed: false,
@@ -2001,7 +2002,8 @@
                         title: pageSessionData.title,
                         user: pageSessionData.user,
                         timestampStart: pageSessionData.timestampStart,
-                        sessionClosed: false
+                        sessionClosed: false,
+                        consent_timestamp: new Date().toISOString()
                     }
                 }, (response) => {
                     if (response && response.sessionId) {
@@ -4858,6 +4860,33 @@
             const q = NASA_TLX_QUESTIONS[currentQuestionIndex];
             if (!surveyResponses.nasa_tlx[q.id]) {
                 surveyResponses.nasa_tlx[q.id] = 50; // Default to middle
+            }
+        }
+
+        // Validate: SUS requires a radio selection before advancing
+        if (currentSurveySection === 1) {
+            if (surveyResponses.sus.responses[currentQuestionIndex] === null) {
+                const scale = surveyModal.querySelector('.garb-likert-scale');
+                if (scale) {
+                    scale.style.outline = '2px solid #ef4444';
+                    scale.style.borderRadius = '8px';
+                    setTimeout(() => { scale.style.outline = ''; }, 1500);
+                }
+                return;
+            }
+        }
+
+        // Validate: Custom GARB requires a selection before advancing
+        if (currentSurveySection === 2) {
+            const q = GARB_CUSTOM_QUESTIONS[currentQuestionIndex];
+            if (!surveyResponses.custom_garb[q.id]) {
+                const scale = surveyModal.querySelector('.garb-likert-scale');
+                if (scale) {
+                    scale.style.outline = '2px solid #ef4444';
+                    scale.style.borderRadius = '8px';
+                    setTimeout(() => { scale.style.outline = ''; }, 1500);
+                }
+                return;
             }
         }
 

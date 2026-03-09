@@ -350,7 +350,7 @@ chrome.runtime.onMessage.addListener(
             fetch(`${API_URL}/pageSessions/${request.data.sessionId}`, {
                 method: "PATCH",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ survey_responses: request.data.survey_responses })
+                body: JSON.stringify({ survey_responses: request.data.survey_responses, survey_completed_at: request.data.survey_completed_at })
             })
             .then(resp => { if (!resp.ok) throw new Error(`PATCH failed: ${resp.status}`); return resp.json(); })
             .then(data => { console.log("Survey saved:", data); sendResponse({ success: true, data }); })
