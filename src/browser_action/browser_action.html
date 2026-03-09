@@ -582,16 +582,16 @@
       <!-- Login View -->
       <div id="login">
         <div class="form-group">
-          <label for="username">Username</label>
-          <input type="text" id="username" name="username" placeholder="Enter username">
+          <label for="username">Dartmouth Email</label>
+          <input type="email" id="username" name="username" placeholder="your.name@dartmouth.edu">
         </div>
         <div class="form-group">
-          <label for="password">Password</label>
-          <input type="password" id="password" name="password" placeholder="Enter password">
+          <!-- Password hidden for Technigala -->
+          <input type="hidden" id="password" value="technigala">
         </div>
         <div class="btn-group">
-          <button id="signin" class="btn btn-primary">Sign In</button>
-          <button id="signup" class="btn btn-secondary">Sign Up</button>
+          <!-- signin button removed for Technigala -->
+          <button id="signup" class="btn btn-primary" style="flex: 2;">Register / Sign In</button>
         </div>
         <div id="signInMessage"></div>
       </div>

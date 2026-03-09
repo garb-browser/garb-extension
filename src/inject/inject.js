@@ -70,6 +70,13 @@
     let highlightOffset = parseInt(localStorage.getItem('garb-highlight-offset')) || 0;
 
     // ========================================
+    // RULER STYLE (visual highlighting style)
+    // ========================================
+    // default, lightbox, shade, underline, grey-bar
+    let currentRulerStyle = localStorage.getItem('garb-ruler-style') || 'default';
+
+
+    // ========================================
     // PAUSE/LOCK STATE
     // ========================================
     let isPaused = false;
@@ -122,7 +129,7 @@
     const gazeState = {
         // EMA Smoothing
         ema: { x: null, y: null },
-        emaAlpha: 0.3,
+        emaAlpha: 0.5,
 
         // Velocity & Saccade Detection
         velocity: { x: 0, y: 0, magnitude: 0 },
@@ -145,8 +152,8 @@
         candidateLine: -1,
         candidateLineStartTime: 0,
         candidateLineCount: 0,
-        lineLockDurationMs: 300,
-        lineMarginThreshold: 60, // px — must exceed eye tracker noise (~46px RMS)
+        lineLockDurationMs: 150, // ms - lowered from 300 for snappier line tracking
+        lineMarginThreshold: 30, // px - lowered from 60 for faster line switching // px — must exceed eye tracker noise (~46px RMS)
         currentLockedLine: -1,
 
         // Manual nudge lock (prevents gaze override after nudge)
@@ -161,7 +168,7 @@
         // Line geometry cache
         lineRects: [],
         lineRectsCacheTime: 0,
-        lineRectsCacheDuration: 1000,
+        lineRectsCacheDuration: 200, // ms - reduced from 1000 for accurate post-scroll tracking
 
         // Resume marker
         lastStablePosition: { line: -1, word: -1 },
@@ -696,7 +703,7 @@
          */
         getProcessingMethods() {
             return {
-                smoothing: "EMA (alpha=0.3, adaptive based on velocity)",
+                smoothing: "EMA (alpha=0.5, adaptive based on velocity)",
                 fixation_detection: "I-VT (velocity threshold 30px/sample, min duration 100ms)",
                 saccade_detection: "Velocity threshold (800px/sec, 50ms freeze period)",
                 line_lock: "Hysteresis (time=" + gazeState.lineLockDurationMs + "ms, margin=" + gazeState.lineMarginThreshold + "px)",
@@ -874,6 +881,54 @@
      * Deactivate tracking and restore original page with exit animation
      */
     function deactivateTracking() {
+        // Save session data FIRST (before navigation kills the page context)
+        if (window.currentSessionId && typeof dataLogger !== 'undefined' && dataLogger) {
+            console.log('GARB: Saving session data before deactivation...');
+            try {
+                dataLogger.updateTextPresence(false);
+                const gazeResult = dataLogger.getSizeSafeGazeData(400000);
+                const wordsRead = document.querySelectorAll('.garb-word-read').length;
+                const sessionDurationMs = Date.now() - (window.startTime || Date.now());
+                const sessionDurationMin = sessionDurationMs / 60000;
+
+                const saveData = {
+                    timestampEnd: Date.now(),
+                    sessionClosed: true,
+                    summary: dataLogger.getSummary(),
+                    gaze_events_jsonl: gazeResult.data,
+                    ui_events_jsonl: dataLogger.uiToJSONL(),
+                    settings_snapshot: dataLogger.getSettingsSnapshot(),
+                    device_metadata: dataLogger.getDeviceMetadata(),
+                    processing_methods: dataLogger.getProcessingMethods(),
+                    wpm: sessionDurationMin > 0 ? Math.round(wordsRead / sessionDurationMin) : 0,
+                    words_read: wordsRead,
+                    reading_duration_seconds: Math.round(sessionDurationMs / 1000)
+                };
+                if (gazeResult.sampled) {
+                    saveData.gaze_data_sampled = true;
+                    saveData.gaze_sampling_ratio = gazeResult.samplingRatio;
+                    saveData.gaze_original_count = gazeResult.originalCount;
+                }
+
+                // Send via background script (service worker persists after page dies)
+                safeSendMessage({
+                    contentScriptQuery: 'updateSession',
+                    sessionId: window.currentSessionId,
+                    data: saveData
+                }, (response) => {
+                    if (response && response.success) {
+                        console.log('GARB: Session saved successfully via background');
+                    } else {
+                        console.warn('GARB: Session save response:', response);
+                    }
+                });
+                // Mark as saved so beforeunload doesn't double-save
+                window._garbSessionSaved = true;
+            } catch (e) {
+                console.error('GARB: Error saving session on deactivate:', e);
+            }
+        }
+
         // Close WebSocket
         if (window.eyeTrackingWebSocket) {
             window.eyeTrackingWebSocket.close();
@@ -1404,9 +1459,41 @@
         if (offsetSlider) {
             offsetSlider.addEventListener('input', function() {
                 highlightOffset = parseInt(this.value);
-                const labels = { '-1': 'Word Before', '0': 'Current Word', '1': 'Word After' };
-                if (offsetValue) offsetValue.textContent = labels[this.value] || 'Current Word';
+                const labels = {}; const v = parseInt(this.value); const lbl = v === 0 ? 'Current Word' : v > 0 ? '+' + v + ' Words After' : v + ' Words Before';
+                if (offsetValue) offsetValue.textContent = lbl;
                 try { localStorage.setItem('garb-highlight-offset', this.value); } catch (e) {}
+            });
+        }
+
+        // Ruler style dropdown handler
+        // Custom dropdown handler for ruler style
+        const selectTrigger = document.getElementById('garb-select-trigger');
+        const selectOptions = document.getElementById('garb-select-options');
+        const selectLabel = document.getElementById('garb-select-label');
+        if (selectTrigger && selectOptions) {
+            selectTrigger.addEventListener('click', function(e) {
+                e.stopPropagation();
+                selectOptions.classList.toggle('open');
+                selectTrigger.classList.toggle('open');
+            });
+            selectOptions.querySelectorAll('.garb-select-option').forEach(opt => {
+                opt.addEventListener('click', function(e) {
+                    e.stopPropagation();
+                    const val = this.dataset.value;
+                    currentRulerStyle = val;
+                    if (selectLabel) selectLabel.textContent = this.textContent;
+                    selectOptions.querySelectorAll('.garb-select-option').forEach(o => o.classList.remove('active'));
+                    this.classList.add('active');
+                    selectOptions.classList.remove('open');
+                    selectTrigger.classList.remove('open');
+                    try { localStorage.setItem('garb-ruler-style', val); } catch (e) {}
+                    document.body.setAttribute('data-ruler-style', val === 'default' ? '' : val);
+                });
+            });
+            // Close on click outside
+            document.addEventListener('click', function() {
+                selectOptions.classList.remove('open');
+                selectTrigger.classList.remove('open');
             });
         }
 
@@ -1473,6 +1560,18 @@
         window.targetSiteURL = location.href;
         window.eyeTrackingViewMode = 1;
         window.currentUser = null; // Will be set when user is retrieved
+        window.currentSessionId = null; // Will be set when session is saved to DB
+
+        // Try to get user from auth state immediately (for survey save)
+        try {
+            chrome.runtime.sendMessage({action: "getAuthState"}, response => {
+                if (chrome.runtime.lastError) return; // Silently ignore
+                if (response && response.user) {
+                    window.currentUser = response.user;
+                    console.log("GARB: User set from auth state:", window.currentUser);
+                }
+            });
+        } catch (e) { /* ignore - non-critical */ }
 
         // Reset baseline mode state for new article
         resetBaselineMode();
@@ -1687,10 +1786,26 @@
                     <span class="garb-settings-label">Highlight Position</span>
                     <div class="garb-highlight-offset-control">
                         <span class="garb-offset-label-left">Before</span>
-                        <input type="range" class="garb-offset-slider" id="garb-offset-slider" min="-1" max="1" step="1" value="${highlightOffset}">
+                        <input type="range" class="garb-offset-slider" id="garb-offset-slider" min="-5" max="5" step="1" value="${highlightOffset}">
                         <span class="garb-offset-label-right">After</span>
                     </div>
-                    <div class="garb-offset-value" id="garb-offset-value">${highlightOffset === -1 ? 'Word Before' : highlightOffset === 1 ? 'Word After' : 'Current Word'}</div>
+                    <div class="garb-offset-value" id="garb-offset-value">${(highlightOffset === 0 ? 'Current Word' : highlightOffset > 0 ? '+' + highlightOffset + ' Words After' : highlightOffset + ' Words Before')}</div>
+                </div>
+                <div class="garb-settings-section garb-ruler-style-section">
+                    <span class="garb-settings-label">Ruler Style</span>
+                    <div class="garb-custom-select" id="garb-ruler-style-wrapper">
+                        <div class="garb-select-trigger" id="garb-select-trigger">
+                            <span id="garb-select-label">${{'default':'Default (GARB)','lightbox':'Lightbox','shade':'Shade','underline':'Underline','grey-bar':'Grey Bar'}[currentRulerStyle] || 'Default (GARB)'}</span>
+                            <svg width="10" height="6" viewBox="0 0 10 6"><path fill="currentColor" d="M0 0l5 6 5-6z"/></svg>
+                        </div>
+                        <div class="garb-select-options" id="garb-select-options">
+                            <div class="garb-select-option${currentRulerStyle === 'default' ? ' active' : ''}" data-value="default">Default (GARB)</div>
+                            <div class="garb-select-option${currentRulerStyle === 'lightbox' ? ' active' : ''}" data-value="lightbox">Lightbox</div>
+                            <div class="garb-select-option${currentRulerStyle === 'shade' ? ' active' : ''}" data-value="shade">Shade</div>
+                            <div class="garb-select-option${currentRulerStyle === 'underline' ? ' active' : ''}" data-value="underline">Underline</div>
+                            <div class="garb-select-option${currentRulerStyle === 'grey-bar' ? ' active' : ''}" data-value="grey-bar">Grey Bar</div>
+                        </div>
+                    </div>
                 </div>
                 <div class="garb-settings-footer">
                     <label class="garb-autoscroll-compact" title="Toggle auto-scroll (A)">
@@ -1739,7 +1854,7 @@
     <title>${escapeHtml(result.title)} - Reading Mode</title>
     ${criticalCSS}
 </head>
-<body class="garb-reader theme-gray font-serif size-medium" data-zoom="100" data-mode="${currentTrackingMode}">
+<body class="garb-reader theme-gray font-serif size-medium" data-zoom="100" data-mode="${currentTrackingMode}" data-ruler-style="${currentRulerStyle === 'default' ? '' : currentRulerStyle}">
     ${progressBar}
     ${sourceBar}
     ${settingsPanel}
@@ -1876,6 +1991,27 @@
                     settings_snapshot: dataLogger ? dataLogger.getSettingsSnapshot() : null
                 };
 
+
+                // Option B: Create session in DB immediately on activation
+                // This gives us a session ID for survey + deactivation PATCHes
+                safeSendMessage({
+                    contentScriptQuery: 'createSession',
+                    data: {
+                        url: pageSessionData.url,
+                        title: pageSessionData.title,
+                        user: pageSessionData.user,
+                        timestampStart: pageSessionData.timestampStart,
+                        sessionClosed: false
+                    }
+                }, (response) => {
+                    if (response && response.sessionId) {
+                        window.currentSessionId = response.sessionId;
+                        console.log('GARB: Session created with ID:', window.currentSessionId);
+                    } else {
+                        console.warn('GARB: Failed to create session on activation:', response);
+                    }
+                });
+
                 runWebSocket(quadFreqs, dbQuadFreqs, pageSessionData);
             }
         );
@@ -1964,17 +2100,39 @@
 
             console.log("GARB: Saving session for user:", pageSessionData.user);
 
-            // Use sendBeacon for reliable saving on page close (doesn't wait for response)
-            const beaconUrl = 'https://garb-api.fly.dev/pageSessions';
-            const blob = new Blob([JSON.stringify(pageSessionData)], { type: 'application/json' });
-            const beaconSent = navigator.sendBeacon(beaconUrl, blob);
-            console.log("GARB: sendBeacon result:", beaconSent);
-
-            // Also try the normal message as backup
-            safeSendMessage({
-                contentScriptQuery: "saveToDatabase",
-                data: pageSessionData
-            });
+            // Option B: PATCH existing session with gaze data (session created on activation)
+            if (window._garbSessionSaved) {
+                console.log('GARB: Session already saved on deactivate, skipping beforeunload save');
+            } else if (window.currentSessionId) {
+                console.log('GARB: PATCHing session', window.currentSessionId, 'with gaze data');
+                // Use sendBeacon for reliable saving on page close
+                const beaconUrl = 'https://garb-api.fly.dev/pageSessions/' + window.currentSessionId;
+                // sendBeacon only supports POST, so use fetch with keepalive for PATCH
+                fetch(beaconUrl, {
+                    method: 'PATCH',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(pageSessionData),
+                    keepalive: true
+                }).then(r => console.log('GARB: Session PATCH status:', r.status))
+                  .catch(e => console.error('GARB: Session PATCH error:', e));
+                
+                // Also try via background script as backup
+                safeSendMessage({
+                    contentScriptQuery: 'updateSession',
+                    sessionId: window.currentSessionId,
+                    data: pageSessionData
+                });
+            } else {
+                // Fallback: no session ID, POST as before
+                console.warn('GARB: No session ID, falling back to POST');
+                const beaconUrl = 'https://garb-api.fly.dev/pageSessions';
+                const blob = new Blob([JSON.stringify(pageSessionData)], { type: 'application/json' });
+                navigator.sendBeacon(beaconUrl, blob);
+                safeSendMessage({
+                    contentScriptQuery: 'saveToDatabase',
+                    data: pageSessionData
+                });
+            }
 
             safeSendMessage({
                 contentScriptQuery: "showDistractionMetric",
@@ -2472,9 +2630,9 @@
         // Adaptive alpha: faster response during movement, more smoothing when stable
         let alpha = gazeState.emaAlpha;
         if (velocity.magnitude > 200) {
-            alpha = Math.min(0.6, gazeState.emaAlpha * 1.5);
+            alpha = Math.min(0.7, gazeState.emaAlpha * 1.4);
         } else if (velocity.magnitude < 50) {
-            alpha = Math.max(0.15, gazeState.emaAlpha * 0.7);
+            alpha = Math.max(0.35, gazeState.emaAlpha * 0.7);
         }
 
         // Apply EMA
@@ -2593,7 +2751,7 @@
             // Use a gaze target biased toward the upper portion of the line.
             // When reading, eyes focus on the x-height (upper ~40% of the line box),
             // not the geometric center (which includes descenders + line spacing).
-            const gazeTarget = lineRect.top + lineRect.height * 0.4;
+            const gazeTarget = lineRect.top + lineRect.height * 0.5;
             const distance = Math.abs(gazeY - gazeTarget);
 
             if (distance < bestDistance) {
@@ -4450,11 +4608,18 @@
      * Custom GARB Scale Questions
      */
     const GARB_CUSTOM_QUESTIONS = [
+        // Reading assistance effectiveness
         { id: 'helped_keep_place', text: 'The highlighting helped me keep my place while reading.' },
-        { id: 'reduced_rereading', text: 'I had to re-read less often with the eye tracking active.' },
-        { id: 'felt_natural', text: 'The tracking felt natural and unobtrusive.' },
-        { id: 'tracking_accuracy', text: 'The tracking accurately followed where I was reading.' },
-        { id: 'would_use_again', text: 'I would use this extension again for reading.' }
+        { id: 'reduced_rereading', text: 'I had to re-read less often with the highlighting active.' },
+        { id: 'improved_focus', text: 'The extension helped me stay focused on the text.' },
+        // Gaze tracking quality
+        { id: 'tracking_accuracy', text: 'The gaze tracking accurately followed where I was reading.' },
+        { id: 'felt_natural', text: 'The tracking felt natural and non-distracting.' },
+        { id: 'tracking_latency', text: 'The highlight responded quickly enough to my eye movements.' },
+        // Comprehension & engagement
+        { id: 'comprehension', text: 'I feel I understood the article better with the extension active.' },
+        // Overall
+        { id: 'would_use_again', text: 'I would use this extension again for everyday reading.' }
     ];
 
     // Survey state
@@ -4608,7 +4773,7 @@
         let completedAll = Object.keys(surveyResponses.nasa_tlx).length +
                           surveyResponses.sus.responses.filter(v => v !== null).length +
                           Object.keys(surveyResponses.custom_garb).length;
-        const progressPercent = Math.round((completedAll / totalAll) * 100);
+        const progressPercent = Math.min(100, Math.round((completedAll / totalAll) * 100));
 
         surveyModal.innerHTML = `
             <div class="garb-modal">
@@ -4767,6 +4932,7 @@
             data: {
                 user: window.currentUser,
                 url: window.targetSiteURL,
+                sessionId: window.currentSessionId,
                 survey_responses: surveyResponses,
                 survey_completed_at: Date.now()
             }

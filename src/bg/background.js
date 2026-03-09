@@ -224,6 +224,48 @@ chrome.runtime.onMessage.addListener(
         return true;  // Will respond asynchronously.
       }
 
+      // Create a new session on activation (Option B: session-first flow)
+      else if (request.contentScriptQuery == 'createSession') {
+        console.log('GARB: Creating session on activation for user:', request.data?.user);
+        fetch(API_URL + '/pageSessions/create', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(request.data),
+            keepalive: true
+        })
+        .then(resp => { if (!resp.ok) throw new Error('Create failed: ' + resp.status); return resp.json(); })
+        .then(data => {
+            console.log('GARB: Session created:', data.sessionId);
+            sendResponse({ sessionId: data.sessionId });
+        })
+        .catch(error => {
+            console.error('GARB: Session creation failed:', error);
+            sendResponse({ error: error.message });
+        });
+        return true;
+      }
+
+      // Update an existing session by ID (PATCH with gaze data on deactivation)
+      else if (request.contentScriptQuery == 'updateSession') {
+        console.log('GARB: Updating session', request.sessionId, 'with gaze data');
+        fetch(API_URL + '/pageSessions/' + request.sessionId, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(request.data)
+        })
+        .then(resp => { if (!resp.ok) throw new Error('Update failed: ' + resp.status); return resp.json(); })
+        .then(data => {
+            console.log('GARB: Session updated:', data);
+            sendResponse({ success: true });
+        })
+        .catch(error => {
+            console.error('GARB: Session update failed:', error);
+            sendResponse({ error: error.message });
+        });
+        return true;
+      }
+
+
       // Request to save the current pagesession data to the database
       else if (request.contentScriptQuery == "saveToDatabase") {
         // Validate request data
@@ -302,7 +344,21 @@ chrome.runtime.onMessage.addListener(
       else if (request.contentScriptQuery == "saveSurveyResponses") {
         console.log("Saving survey responses", request.data);
 
-        // Get user from request data or fall back to authUser
+        // Fast path: if we have a session ID, PATCH directly (no lookup needed)
+        if (request.data.sessionId) {
+            console.log("GARB: Direct survey save to session:", request.data.sessionId);
+            fetch(`${API_URL}/pageSessions/${request.data.sessionId}`, {
+                method: "PATCH",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ survey_responses: request.data.survey_responses })
+            })
+            .then(resp => { if (!resp.ok) throw new Error(`PATCH failed: ${resp.status}`); return resp.json(); })
+            .then(data => { console.log("Survey saved:", data); sendResponse({ success: true, data }); })
+            .catch(error => { console.error("Direct save failed:", error); sendResponse({ success: false, error: error.message }); });
+            return true;
+        }
+
+        // Fallback: lookup by user/url
         const user = request.data.user || authUser;
         if (!user) {
             console.error("No user found for saving survey");
@@ -322,12 +378,13 @@ chrome.runtime.onMessage.addListener(
                 }
                 return resp.json();
             })
-            .then(sessions => {
-                console.log("Found sessions:", sessions);
+            .then(response => {
+                console.log("Found sessions response:", response);
 
-                // Defensive check: ensure sessions is an array
+                // Handle both array and { value: [...] } response shapes
+                const sessions = Array.isArray(response) ? response : (response.value || response);
                 if (!Array.isArray(sessions)) {
-                    console.error("Expected array of sessions, got:", typeof sessions);
+                    console.error("Expected array of sessions, got:", typeof sessions, response);
                     throw new Error("Invalid response from server - expected array of sessions");
                 }
 
@@ -350,7 +407,22 @@ chrome.runtime.onMessage.addListener(
                         })
                     });
                 } else {
-                    throw new Error("No session found to update");
+                    // Technigala: no session exists yet, create one with survey data
+                    console.log("GARB: No session found, creating new session with survey data");
+                    return fetch(API_URL + '/pageSessions', {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({
+                            url: request.data.url,
+                            user: user,
+                            title: "Survey-only session",
+                            timestampStart: Date.now() - 60000,
+                            timestampEnd: Date.now(),
+                            sessionClosed: true,
+                            survey_responses: request.data.survey_responses,
+                            survey_completed_at: request.data.survey_completed_at
+                        })
+                    });
                 }
             })
             .then(resp => {

@@ -937,6 +937,70 @@
     border-radius: 3px;
 }
 
+
+/* ========================================
+   RULER STYLE VARIATIONS
+   Based on Niklaus et al. CHI '23 Digital Reading Rulers
+   Styles: default, lightbox, shade, underline, grey-bar
+   ======================================== */
+
+/* Default ruler style - standard GARB highlighting (no overrides needed) */
+
+/* Lightbox: dims everything except the active line */
+.garb-reader[data-ruler-style="lightbox"] .garb-line {
+    opacity: 0.25;
+    transition: opacity 0.2s ease, background 0.15s ease;
+}
+.garb-reader[data-ruler-style="lightbox"] .garb-line-active {
+    opacity: 1;
+    background: var(--highlight-line-active);
+}
+.garb-reader[data-ruler-style="lightbox"] .garb-line-complete {
+    opacity: 0.4;
+}
+
+/* Shade: covers text above the current reading position */
+.garb-reader[data-ruler-style="shade"] .garb-line-complete {
+    background: rgba(0, 0, 0, 0.15);
+}
+.garb-reader[data-ruler-style="shade"] .garb-line-active {
+    background: var(--highlight-line-active);
+}
+/* Dark theme shade adjustment */
+.garb-reader.theme-dark[data-ruler-style="shade"] .garb-line-complete {
+    background: rgba(255, 255, 255, 0.08);
+}
+
+/* Underline: thin colored line under the active line */
+.garb-reader[data-ruler-style="underline"] .garb-line-active {
+    background: none;
+    border-bottom: 3px solid var(--highlight-current, rgba(245, 222, 120, 0.7));
+    padding-bottom: 1px;
+    border-radius: 0;
+}
+.garb-reader[data-ruler-style="underline"] .garb-line-complete {
+    background: none;
+}
+
+/* Grey Bar: full-width horizontal bar on the active line only */
+.garb-reader[data-ruler-style="grey-bar"] .garb-line-active {
+    background: rgba(128, 128, 128, 0.2);
+    border-radius: 2px;
+}
+.garb-reader[data-ruler-style="grey-bar"] .garb-line-complete {
+    background: none;
+}
+/* Dark theme grey bar adjustment */
+.garb-reader.theme-dark[data-ruler-style="grey-bar"] .garb-line-active {
+    background: rgba(200, 200, 200, 0.12);
+}
+
+/* Ruler style selector in settings */
+.garb-ruler-style-section {
+    margin-top: 4px;
+}
+
+
 /* Floating gaze bubble - Tobii-style organic blob with transparent center */
 .garb-gaze-bubble {
     background: radial-gradient(
@@ -1845,4 +1909,122 @@
 .garb-calibration-badge.calibrated {
     background: rgba(0, 180, 80, 0.15);
     color: #00b450;
+}
+
+/* Custom dropdown (replaces native <select>) */
+.garb-custom-select {
+    position: relative;
+    width: 100%;
+}
+.garb-select-trigger {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 8px 12px;
+    border-radius: 10px;
+    border: 1.5px solid rgba(255,255,255,0.12);
+    background: rgba(255,255,255,0.06);
+    color: inherit;
+    font-size: 13px;
+    font-weight: 500;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    backdrop-filter: blur(8px);
+    user-select: none;
+}
+.garb-select-trigger:hover {
+    border-color: rgba(255,255,255,0.25);
+    background: rgba(255,255,255,0.1);
+}
+.garb-select-trigger.open {
+    border-color: #3b82f6;
+    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.2);
+}
+.garb-select-trigger svg {
+    opacity: 0.5;
+    transition: transform 0.2s ease;
+    flex-shrink: 0;
+    margin-left: 8px;
+}
+.garb-select-trigger.open svg {
+    transform: rotate(180deg);
+}
+.garb-select-options {
+    display: none;
+    position: absolute;
+    top: calc(100% + 4px);
+    left: 0;
+    right: 0;
+    z-index: 1000;
+    border-radius: 10px;
+    border: 1.5px solid rgba(255,255,255,0.12);
+    background: rgba(40, 40, 45, 0.95);
+    backdrop-filter: blur(16px);
+    box-shadow: 0 8px 32px rgba(0,0,0,0.3), 0 2px 8px rgba(0,0,0,0.2);
+    overflow: hidden;
+    animation: garb-dropdown-in 0.15s ease;
+}
+.garb-select-options.open {
+    display: block;
+}
+@keyframes garb-dropdown-in {
+    from { opacity: 0; transform: translateY(-4px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+.garb-select-option {
+    padding: 9px 12px;
+    font-size: 13px;
+    font-weight: 400;
+    color: rgba(255,255,255,0.8);
+    cursor: pointer;
+    transition: all 0.12s ease;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+}
+.garb-select-option:hover {
+    background: rgba(255,255,255,0.08);
+    color: #fff;
+}
+.garb-select-option.active {
+    background: rgba(59, 130, 246, 0.15);
+    color: #60a5fa;
+    font-weight: 500;
+}
+.garb-select-option + .garb-select-option {
+    border-top: 1px solid rgba(255,255,255,0.06);
+}
+
+/* Light theme overrides */
+.theme-white .garb-select-trigger,
+.theme-cream .garb-select-trigger {
+    border-color: rgba(0,0,0,0.12);
+    background: rgba(0,0,0,0.04);
+}
+.theme-white .garb-select-trigger:hover,
+.theme-cream .garb-select-trigger:hover {
+    background: rgba(0,0,0,0.08);
+}
+.theme-white .garb-select-options,
+.theme-cream .garb-select-options {
+    background: rgba(255, 255, 255, 0.97);
+    border-color: rgba(0,0,0,0.1);
+    box-shadow: 0 8px 32px rgba(0,0,0,0.12), 0 2px 8px rgba(0,0,0,0.06);
+}
+.theme-white .garb-select-option,
+.theme-cream .garb-select-option {
+    color: rgba(0,0,0,0.7);
+}
+.theme-white .garb-select-option:hover,
+.theme-cream .garb-select-option:hover {
+    background: rgba(0,0,0,0.05);
+    color: #000;
+}
+.theme-white .garb-select-option.active,
+.theme-cream .garb-select-option.active {
+    background: rgba(59, 130, 246, 0.1);
+    color: #2563eb;
+}
+.theme-white .garb-select-option + .garb-select-option,
+.theme-cream .garb-select-option + .garb-select-option {
+    border-top-color: rgba(0,0,0,0.06);
 }
