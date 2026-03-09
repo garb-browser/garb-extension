@@ -152,8 +152,8 @@
         candidateLine: -1,
         candidateLineStartTime: 0,
         candidateLineCount: 0,
-        lineLockDurationMs: 300,
-        lineMarginThreshold: 60, // px — must exceed eye tracker noise (~46px RMS)
+        lineLockDurationMs: 150, // ms - lowered from 300 for snappier line tracking
+        lineMarginThreshold: 30, // px - lowered from 60 for faster line switching // px — must exceed eye tracker noise (~46px RMS)
         currentLockedLine: -1,
 
         // Manual nudge lock (prevents gaze override after nudge)
@@ -168,7 +168,7 @@
         // Line geometry cache
         lineRects: [],
         lineRectsCacheTime: 0,
-        lineRectsCacheDuration: 1000,
+        lineRectsCacheDuration: 200, // ms - reduced from 1000 for accurate post-scroll tracking
 
         // Resume marker
         lastStablePosition: { line: -1, word: -1 },
