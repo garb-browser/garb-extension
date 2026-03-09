@@ -366,7 +366,7 @@
             }
 
             // Fixation detection (I-VT algorithm)
-            const FIXATION_VELOCITY_THRESHOLD = 30; // px/sample
+            const FIXATION_VELOCITY_THRESHOLD = 200; // px/sec (I-VT threshold for consumer tracker)
             const FIXATION_MIN_DURATION_MS = 100;
 
             const isSaccade = velocity.magnitude >= FIXATION_VELOCITY_THRESHOLD;
@@ -1979,10 +1979,16 @@
                 createNudgeControl();
                 setupKeyboardShortcuts();
 
+                // A/B condition: randomly assign GARB-assisted vs control per session
+                // In GAZE mode, GARB highlighting is active. In BASELINE, auto-scroll only (no gaze).
+                // Condition is stored per-session for within-subjects analysis.
+                const studyCondition = currentTrackingMode || 'gaze';
+                
                 const pageSessionData = {
                     url: window.targetSiteURL,
                     title: document.querySelector('.garb-title')?.textContent || 'Unknown',
                     user: userData.user,
+                    study_condition: studyCondition,
                     timestampStart: Date.now(),
                     timestampEnd: null,
                     sessionClosed: false,
@@ -2001,7 +2007,8 @@
                         title: pageSessionData.title,
                         user: pageSessionData.user,
                         timestampStart: pageSessionData.timestampStart,
-                        sessionClosed: false
+                        sessionClosed: false,
+                        consent_timestamp: new Date().toISOString()
                     }
                 }, (response) => {
                     if (response && response.sessionId) {
@@ -4622,11 +4629,28 @@
         { id: 'would_use_again', text: 'I would use this extension again for everyday reading.' }
     ];
 
+    // Demographics questions (pre-study)
+    const DEMOGRAPHICS_QUESTIONS = [
+        { id: 'age_range', text: 'What is your age range?', type: 'radio',
+          options: ['18-24', '25-34', '35-44', '45-54', '55+'] },
+        { id: 'reading_frequency', text: 'How often do you read long-form articles online?', type: 'radio',
+          options: ['Rarely', 'A few times a month', 'A few times a week', 'Daily'] },
+        { id: 'vision_correction', text: 'Do you wear glasses or contact lenses while using a computer?', type: 'radio',
+          options: ['No', 'Glasses', 'Contact lenses', 'Both'] },
+        { id: 'attention_difficulty', text: 'Do you experience difficulty maintaining focus while reading?', type: 'radio',
+          options: ['Never', 'Rarely', 'Sometimes', 'Often', 'Always'] },
+        { id: 'native_language', text: 'Is English your first language?', type: 'radio',
+          options: ['Yes', 'No'] },
+        { id: 'eye_tracker_experience', text: 'Have you used an eye tracker before?', type: 'radio',
+          options: ['Never', 'Once or twice', 'Several times', 'Regularly'] }
+    ];
+
     // Survey state
     let surveyModal = null;
     let surveyResponses = {
+        demographics: {},
         nasa_tlx: {},
-        sus: { responses: [] },
+        sus: { responses: new Array(10).fill(null) },
         custom_garb: {}
     };
     let currentSurveySection = 0;
@@ -4640,6 +4664,7 @@
 
         // Reset survey state
         surveyResponses = {
+            demographics: {},
             nasa_tlx: {},
             sus: { responses: new Array(10).fill(null) },
             custom_garb: {}
@@ -4677,7 +4702,31 @@
         let totalQuestions = 0;
         let currentQuestion = 0;
 
+
         if (currentSurveySection === 0) {
+            // Demographics
+            title = 'About You';
+            subtitle = 'Quick background (helps us analyze results)';
+            totalQuestions = DEMOGRAPHICS_QUESTIONS.length;
+            currentQuestion = currentQuestionIndex + 1;
+
+            const q = DEMOGRAPHICS_QUESTIONS[currentQuestionIndex];
+            const currentValue = surveyResponses.demographics[q.id];
+
+            content = `
+                <div class="garb-survey-question">
+                    <p class="garb-survey-prompt">${q.text}</p>
+                    <div class="garb-likert-scale garb-demographics-options">
+                        ${q.options.map(opt => `
+                            <label class="garb-likert-option garb-demo-option">
+                                <input type="radio" name="demo-q" value="${opt}" ${currentValue === opt ? 'checked' : ''}>
+                                <div class="garb-likert-circle garb-demo-circle">${opt}</div>
+                            </label>
+                        `).join('')}
+                    </div>
+                </div>
+            `;
+        } else if (currentSurveySection === 1) {
             // NASA-TLX
             title = 'NASA Task Load Index';
             subtitle = 'Rate your experience on each dimension';
@@ -4701,7 +4750,7 @@
                     </div>
                 </div>
             `;
-        } else if (currentSurveySection === 1) {
+        } else if (currentSurveySection === 2) {
             // SUS
             title = 'System Usability Scale';
             subtitle = 'Rate your agreement with each statement';
@@ -4728,7 +4777,7 @@
                     </div>
                 </div>
             `;
-        } else if (currentSurveySection === 2) {
+        } else if (currentSurveySection === 3) {
             // Custom GARB Scale
             title = 'Reading Experience';
             subtitle = 'Rate your agreement with each statement';
@@ -4792,9 +4841,9 @@
                         <span>${progressPercent}% complete</span>
                     </div>
                     <div>
-                        ${currentSurveySection < 3 ? `
+                        ${currentSurveySection < 4 ? `
                             <button class="garb-btn garb-btn-primary" id="survey-next">
-                                ${currentSurveySection === 2 && currentQuestionIndex === GARB_CUSTOM_QUESTIONS.length - 1 ? 'Finish' : 'Next'}
+                                ${currentSurveySection === 3 && currentQuestionIndex === GARB_CUSTOM_QUESTIONS.length - 1 ? 'Finish' : 'Next'}
                             </button>
                         ` : `
                             <button class="garb-btn garb-btn-primary" id="survey-close">Close</button>
@@ -4817,7 +4866,16 @@
             }
 
             // SUS radio buttons
-            const susRadios = surveyModal.querySelectorAll('input[name="sus-q"]');
+            // Demographics radio listeners
+        const demoRadios = surveyModal.querySelectorAll('input[name="demo-q"]');
+        demoRadios.forEach(radio => {
+            radio.addEventListener('change', (e) => {
+                const q = DEMOGRAPHICS_QUESTIONS[currentQuestionIndex];
+                surveyResponses.demographics[q.id] = e.target.value;
+            });
+        });
+
+        const susRadios = surveyModal.querySelectorAll('input[name="sus-q"]');
             susRadios.forEach(radio => {
                 radio.addEventListener('change', (e) => {
                     surveyResponses.sus.responses[currentQuestionIndex] = parseInt(e.target.value);
@@ -4854,33 +4912,86 @@
      */
     function handleSurveyNext() {
         // Save current response if NASA-TLX (slider has default)
-        if (currentSurveySection === 0) {
+        if (currentSurveySection === 1) {
             const q = NASA_TLX_QUESTIONS[currentQuestionIndex];
             if (!surveyResponses.nasa_tlx[q.id]) {
                 surveyResponses.nasa_tlx[q.id] = 50; // Default to middle
             }
         }
 
+        // Validate: Demographics requires a selection before advancing
+        if (currentSurveySection === 0) {
+            const q = DEMOGRAPHICS_QUESTIONS[currentQuestionIndex];
+            if (!surveyResponses.demographics[q.id]) {
+                const scale = surveyModal.querySelector('.garb-survey-question');
+                if (scale) {
+                    scale.style.outline = '2px solid #ef4444';
+                    scale.style.borderRadius = '8px';
+                    setTimeout(() => { scale.style.outline = ''; }, 1500);
+                }
+                return;
+            }
+        }
+
+        // Validate: SUS requires a radio selection before advancing
+        if (currentSurveySection === 2) {
+            if (surveyResponses.sus.responses[currentQuestionIndex] === null) {
+                // Flash the likert scale to indicate required
+                const scale = surveyModal.querySelector('.garb-likert-scale');
+                if (scale) {
+                    scale.style.outline = '2px solid #ef4444';
+                    scale.style.borderRadius = '8px';
+                    setTimeout(() => { scale.style.outline = ''; }, 1500);
+                }
+                return; // Don't advance
+            }
+        }
+
+        // Validate: Custom GARB requires a selection before advancing
+        if (currentSurveySection === 3) {
+            const q = GARB_CUSTOM_QUESTIONS[currentQuestionIndex];
+            if (!surveyResponses.custom_garb[q.id]) {
+                const scale = surveyModal.querySelector('.garb-likert-scale');
+                if (scale) {
+                    scale.style.outline = '2px solid #ef4444';
+                    scale.style.borderRadius = '8px';
+                    setTimeout(() => { scale.style.outline = ''; }, 1500);
+                }
+                return;
+            }
+        }
+
         // Advance to next question
         if (currentSurveySection === 0) {
-            if (currentQuestionIndex < NASA_TLX_QUESTIONS.length - 1) {
+            // Demographics
+            if (currentQuestionIndex < DEMOGRAPHICS_QUESTIONS.length - 1) {
                 currentQuestionIndex++;
             } else {
                 currentSurveySection = 1;
                 currentQuestionIndex = 0;
             }
         } else if (currentSurveySection === 1) {
-            if (currentQuestionIndex < SUS_QUESTIONS.length - 1) {
+            // NASA-TLX
+            if (currentQuestionIndex < NASA_TLX_QUESTIONS.length - 1) {
                 currentQuestionIndex++;
             } else {
                 currentSurveySection = 2;
                 currentQuestionIndex = 0;
             }
         } else if (currentSurveySection === 2) {
+            // SUS
+            if (currentQuestionIndex < SUS_QUESTIONS.length - 1) {
+                currentQuestionIndex++;
+            } else {
+                currentSurveySection = 3;
+                currentQuestionIndex = 0;
+            }
+        } else if (currentSurveySection === 3) {
+            // Custom GARB
             if (currentQuestionIndex < GARB_CUSTOM_QUESTIONS.length - 1) {
                 currentQuestionIndex++;
             } else {
-                currentSurveySection = 3; // Complete
+                currentSurveySection = 4; // Complete
                 saveSurveyResponses();
             }
         }

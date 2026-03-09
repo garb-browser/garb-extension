@@ -2028,3 +2028,20 @@
 .theme-cream .garb-select-option + .garb-select-option {
     border-top-color: rgba(0,0,0,0.06);
 }
+
+/* Demographics options styling */
+.garb-demographics-options {
+    flex-wrap: wrap;
+    gap: 8px;
+    justify-content: center;
+}
+.garb-demo-option {
+    flex: 0 0 auto;
+}
+.garb-demo-circle {
+    min-width: 60px;
+    padding: 8px 14px;
+    font-size: 12px;
+    white-space: nowrap;
+    border-radius: 20px;
+}
