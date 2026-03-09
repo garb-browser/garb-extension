@@ -300,7 +300,7 @@
 
             // === Data Quality: Precision (RMS of gaze variance) ===
             // Track variance within rolling window during fixations
-            if (velocity.magnitude < 30) { // Only during fixations
+            if (velocity.magnitude < 200) { // Only during fixations (matches I-VT threshold)
                 this.gazeVarianceWindow.push({ x, y });
                 if (this.gazeVarianceWindow.length > this.gazeVarianceWindowSize) {
                     this.gazeVarianceWindow.shift();
@@ -893,6 +893,7 @@
 
                 const saveData = {
                     timestampEnd: Date.now(),
+                    study_condition: currentTrackingMode || 'unknown',
                     sessionClosed: true,
                     summary: dataLogger.getSummary(),
                     gaze_events_jsonl: gazeResult.data,
@@ -1983,7 +1984,7 @@
                     url: window.targetSiteURL,
                     title: document.querySelector('.garb-title')?.textContent || 'Unknown',
                     user: userData.user,
-                    study_condition: currentTrackingMode || 'gaze',
+                    study_condition: null, // Set at save time when mode is known
                     timestampStart: Date.now(),
                     timestampEnd: null,
                     sessionClosed: false,
