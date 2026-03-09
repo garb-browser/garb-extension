@@ -366,6 +366,7 @@
             }
 
             // Fixation detection (I-VT algorithm)
+            // velocity.magnitude is computed in px/sec (see smoothGaze: dx/dt where dt is in seconds)
             const FIXATION_VELOCITY_THRESHOLD = 200; // px/sec (I-VT threshold for consumer tracker)
             const FIXATION_MIN_DURATION_MS = 100;
 
@@ -893,7 +894,7 @@
 
                 const saveData = {
                     timestampEnd: Date.now(),
-                    study_condition: currentTrackingMode || 'unknown',
+                    study_condition: currentTrackingMode || null,
                     sessionClosed: true,
                     summary: dataLogger.getSummary(),
                     gaze_events_jsonl: gazeResult.data,
