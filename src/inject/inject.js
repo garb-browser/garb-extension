@@ -705,7 +705,7 @@
         getProcessingMethods() {
             return {
                 smoothing: "EMA (alpha=0.5, adaptive based on velocity)",
-                fixation_detection: "I-VT (velocity threshold 30px/sample, min duration 100ms)",
+                fixation_detection: "I-VT (velocity threshold 200px/sec, min duration 100ms)",
                 saccade_detection: "Velocity threshold (800px/sec, 50ms freeze period)",
                 line_lock: "Hysteresis (time=" + gazeState.lineLockDurationMs + "ms, margin=" + gazeState.lineMarginThreshold + "px)",
                 aoi_definition: "DOM line bounding boxes from .garb-line elements",
