@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GARB User Study — Informed Consent Form</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: Georgia, 'Times New Roman', serif;
+            font-size: 11pt;
+            line-height: 1.5;
+            color: #111;
+            background: #fff;
+            max-width: 7.5in;
+            margin: 0 auto;
+            padding: 0.75in 0;
+        }
+        h1 {
+            font-size: 15pt;
+            text-align: center;
+            margin-bottom: 4pt;
+        }
+        h2 {
+            font-size: 11pt;
+            margin-top: 14pt;
+            margin-bottom: 4pt;
+            text-transform: uppercase;
+            letter-spacing: 0.5pt;
+        }
+        .subtitle {
+            text-align: center;
+            font-size: 11pt;
+            margin-bottom: 18pt;
+            color: #333;
+        }
+        .field {
+            display: flex;
+            align-items: baseline;
+            margin-bottom: 6pt;
+        }
+        .field-label {
+            font-weight: bold;
+            white-space: nowrap;
+            margin-right: 6pt;
+        }
+        .field-value { color: #333; }
+        p { margin-bottom: 8pt; }
+        ul { margin: 4pt 0 8pt 20pt; }
+        li { margin-bottom: 3pt; }
+        .sig-section {
+            margin-top: 24pt;
+            page-break-inside: avoid;
+        }
+        .sig-block {
+            display: flex;
+            gap: 24pt;
+            margin-top: 14pt;
+        }
+        .sig-field {
+            flex: 1;
+            border-bottom: 1pt solid #111;
+            padding-bottom: 2pt;
+            min-height: 28pt;
+        }
+        .sig-field.date { max-width: 1.8in; }
+        .sig-label {
+            font-size: 9pt;
+            color: #555;
+            margin-top: 2pt;
+        }
+        hr { border: none; border-top: 1pt solid #ccc; margin: 16pt 0; }
+        @media print {
+            body { padding: 0; }
+        }
+    </style>
+</head>
+<body>
+
+<h1>Informed Consent Form</h1>
+<div class="subtitle">Dartmouth College — Human-Computer Interaction Research</div>
+
+<div class="field">
+    <span class="field-label">Study Title:</span>
+    <span class="field-value">GARB: Gaze-Aware Reading Aid for the Browser — User Study</span>
+</div>
+<div class="field">
+    <span class="field-label">Principal Investigator:</span>
+    <span class="field-value">Christian Nyamekye, Dartmouth College</span>
+</div>
+<div class="field">
+    <span class="field-label">Contact:</span>
+    <span class="field-value">christian.k.nyamekye.26@dartmouth.edu</span>
+</div>
+
+<hr>
+
+<h2>Purpose of the Study</h2>
+<p>
+    This study investigates whether gaze-aware reading assistance improves reading
+    comprehension and reduces cognitive load compared to traditional reading methods.
+</p>
+
+<h2>What You Will Do</h2>
+<p>You will be asked to:</p>
+<ul>
+    <li>Read 4 short passages (approximately 300 words each) using different reading modes:
+        gaze-driven, manual scroll, fixed-pace, and no assistance.</li>
+    <li>Wear or sit in front of a <strong>Tobii Eye Tracker 5</strong> during the reading tasks.</li>
+    <li>Complete a brief comprehension quiz after each passage.</li>
+    <li>Complete <strong>NASA-TLX</strong> (workload) and <strong>SUS</strong> (usability) questionnaires after each passage.</li>
+</ul>
+<p>The session will take approximately <strong>45 minutes</strong>.</p>
+
+<h2>Data Collected</h2>
+<ul>
+    <li>Reading speed and time-on-task</li>
+    <li>Eye gaze patterns (fixations, saccades, regressions)</li>
+    <li>Comprehension quiz responses</li>
+    <li>NASA-TLX and SUS survey answers</li>
+</ul>
+
+<h2>Data Handling</h2>
+<p>
+    All data will be <strong>anonymized</strong> — no personally identifiable information will be
+    linked to your responses. Data is stored securely on <em>garb-api.fly.dev</em> and is
+    accessible only to the research team.
+</p>
+
+<h2>Voluntary Participation</h2>
+<p>
+    Participation is completely voluntary. You may stop at any time without penalty.
+    You may decline to answer any question or withdraw your data after the session by
+    contacting the principal investigator.
+</p>
+
+<h2>Questions</h2>
+<p>
+    If you have questions about this study, please contact
+    <strong>christian.k.nyamekye.26@dartmouth.edu</strong>.
+</p>
+
+<hr>
+
+<div class="sig-section">
+    <h2>Participant Agreement</h2>
+    <p>
+        I have read and understood the information above. I voluntarily agree to participate
+        in this study.
+    </p>
+
+    <div class="sig-block">
+        <div>
+            <div class="sig-field"></div>
+            <div class="sig-label">Participant — Printed Name</div>
+        </div>
+        <div>
+            <div class="sig-field"></div>
+            <div class="sig-label">Signature</div>
+        </div>
+        <div>
+            <div class="sig-field date"></div>
+            <div class="sig-label">Date</div>
+        </div>
+    </div>
+</div>
+
+<div class="sig-section">
+    <h2>Researcher</h2>
+    <div class="sig-block">
+        <div>
+            <div class="sig-field"></div>
+            <div class="sig-label">Researcher — Signature</div>
+        </div>
+        <div>
+            <div class="sig-field date"></div>
+            <div class="sig-label">Date</div>
+        </div>
+    </div>
+</div>
+
+</body>
+</html>
