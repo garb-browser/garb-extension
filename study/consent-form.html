@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>GARB User Study — Informed Consent Form</title>
+    <title>GARB User Study - Informed Consent Form</title>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body {
@@ -16,77 +16,40 @@
             margin: 0 auto;
             padding: 0.75in 0;
         }
-        h1 {
-            font-size: 15pt;
-            text-align: center;
-            margin-bottom: 4pt;
-        }
-        h2 {
-            font-size: 11pt;
-            margin-top: 14pt;
-            margin-bottom: 4pt;
-            text-transform: uppercase;
-            letter-spacing: 0.5pt;
-        }
-        .subtitle {
-            text-align: center;
-            font-size: 11pt;
-            margin-bottom: 18pt;
-            color: #333;
-        }
-        .field {
-            display: flex;
-            align-items: baseline;
-            margin-bottom: 6pt;
-        }
-        .field-label {
-            font-weight: bold;
-            white-space: nowrap;
-            margin-right: 6pt;
-        }
+        h1 { font-size: 15pt; text-align: center; margin-bottom: 4pt; }
+        h2 { font-size: 11pt; margin-top: 14pt; margin-bottom: 4pt; text-transform: uppercase; letter-spacing: 0.5pt; }
+        .subtitle { text-align: center; font-size: 11pt; margin-bottom: 18pt; color: #333; }
+        .field { display: flex; align-items: baseline; margin-bottom: 6pt; }
+        .field-label { font-weight: bold; white-space: nowrap; margin-right: 6pt; }
         .field-value { color: #333; }
         p { margin-bottom: 8pt; }
         ul { margin: 4pt 0 8pt 20pt; }
         li { margin-bottom: 3pt; }
-        .sig-section {
-            margin-top: 24pt;
-            page-break-inside: avoid;
-        }
-        .sig-block {
-            display: flex;
-            gap: 24pt;
-            margin-top: 14pt;
-        }
-        .sig-field {
-            flex: 1;
-            border-bottom: 1pt solid #111;
-            padding-bottom: 2pt;
-            min-height: 28pt;
-        }
+        .sig-section { margin-top: 24pt; page-break-inside: avoid; }
+        .sig-block { display: flex; gap: 24pt; margin-top: 14pt; }
+        .sig-field { flex: 1; border-bottom: 1pt solid #111; padding-bottom: 2pt; min-height: 28pt; }
         .sig-field.date { max-width: 1.8in; }
-        .sig-label {
-            font-size: 9pt;
-            color: #555;
-            margin-top: 2pt;
-        }
+        .sig-label { font-size: 9pt; color: #555; margin-top: 2pt; }
         hr { border: none; border-top: 1pt solid #ccc; margin: 16pt 0; }
-        @media print {
-            body { padding: 0; }
-        }
+        @media print { body { padding: 0; } }
     </style>
 </head>
 <body>
 
 <h1>Informed Consent Form</h1>
-<div class="subtitle">Dartmouth College — Human-Computer Interaction Research</div>
+<div class="subtitle">Dartmouth College - Human-Computer Interaction Research</div>
 
 <div class="field">
     <span class="field-label">Study Title:</span>
-    <span class="field-value">GARB: Gaze-Aware Reading Aid for the Browser — User Study</span>
+    <span class="field-value">GARB: Gaze-Aware Reading Aid for the Browser - User Study</span>
 </div>
 <div class="field">
     <span class="field-label">Principal Investigator:</span>
     <span class="field-value">Christian Nyamekye, Dartmouth College</span>
+</div>
+<div class="field">
+    <span class="field-label">Faculty Advisor:</span>
+    <span class="field-value">Tim Tregubov, Dartmouth College</span>
 </div>
 <div class="field">
     <span class="field-label">Contact:</span>
@@ -106,7 +69,7 @@
 <ul>
     <li>Read 4 short passages (approximately 300 words each) using different reading modes:
         gaze-driven, manual scroll, fixed-pace, and no assistance.</li>
-    <li>Wear or sit in front of a <strong>Tobii Eye Tracker 5</strong> during the reading tasks.</li>
+    <li>Sit in front of a <strong>Tobii Eye Tracker 5</strong> during the reading tasks.</li>
     <li>Complete a brief comprehension quiz after each passage.</li>
     <li>Complete <strong>NASA-TLX</strong> (workload) and <strong>SUS</strong> (usability) questionnaires after each passage.</li>
 </ul>
@@ -120,18 +83,23 @@
     <li>NASA-TLX and SUS survey answers</li>
 </ul>
 
-<h2>Data Handling</h2>
+<h2>Data Handling and Confidentiality</h2>
 <p>
-    All data will be <strong>anonymized</strong> — no personally identifiable information will be
-    linked to your responses. Data is stored securely on <em>garb-api.fly.dev</em> and is
-    accessible only to the research team.
+    Your study data will be <strong>de-identified</strong>: you will be assigned a random participant ID,
+    and your name will not be stored alongside your gaze or survey data. The digital data collected
+    during the session (reading speed, gaze patterns, quiz and survey responses) is linked only to
+    your participant ID and stored securely on an encrypted server accessible only to the research team.
+</p>
+<p>
+    This signed consent form contains your name and is stored <strong>separately</strong> from the
+    digital study data. The two will not be linked in any published results or shared datasets.
+    Aggregate and anonymized findings may be published in academic venues.
 </p>
 
 <h2>Voluntary Participation</h2>
 <p>
     Participation is completely voluntary. You may stop at any time without penalty.
-    You may decline to answer any question or withdraw your data after the session by
-    contacting the principal investigator.
+    You may withdraw your data after the session by contacting the principal investigator.
 </p>
 
 <h2>Questions</h2>
@@ -146,13 +114,14 @@
     <h2>Participant Agreement</h2>
     <p>
         I have read and understood the information above. I voluntarily agree to participate
-        in this study.
+        in this study. I understand that my signed consent form will be stored separately
+        from my de-identified study data.
     </p>
 
     <div class="sig-block">
         <div>
             <div class="sig-field"></div>
-            <div class="sig-label">Participant — Printed Name</div>
+            <div class="sig-label">Participant - Printed Name</div>
         </div>
         <div>
             <div class="sig-field"></div>
@@ -170,7 +139,7 @@
     <div class="sig-block">
         <div>
             <div class="sig-field"></div>
-            <div class="sig-label">Researcher — Signature</div>
+            <div class="sig-label">Researcher - Signature</div>
         </div>
         <div>
             <div class="sig-field date"></div>
